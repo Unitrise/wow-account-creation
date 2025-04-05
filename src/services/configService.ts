@@ -58,17 +58,32 @@ export function loadConfig(relativePath = 'config.cfg'): Record<string, string> 
   try {
     // Server-side loading from file
     if (!isBrowser && fs && path) {
-      // Resolve path to config file
-      // The config file should be in the project root
-      const configPath = path.resolve(process.cwd(), relativePath);
+      // Try multiple possible locations for the config file
+      const possiblePaths = [
+        path.resolve(process.cwd(), relativePath), // Project root
+        path.resolve(process.cwd(), 'dist', relativePath), // Dist folder
+        path.resolve(__dirname, '..', '..', relativePath), // Relative to this file
+        path.resolve(__dirname, '..', '..', 'dist', relativePath) // Dist folder relative to this file
+      ];
       
-      console.log(`Loading config from: ${configPath}`);
+      let configPath = '';
+      let configFound = false;
       
-      // Check if file exists
-      if (!fs.existsSync(configPath)) {
-        console.warn(`Config file not found at ${configPath}`);
+      // Try each path until we find the config file
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          configPath = p;
+          configFound = true;
+          break;
+        }
+      }
+      
+      if (!configFound) {
+        console.warn(`Config file not found in any of the expected locations`);
         return config;
       }
+      
+      console.log(`Loading config from: ${configPath}`);
       
       // Read the config file
       const configData = fs.readFileSync(configPath, 'utf8');

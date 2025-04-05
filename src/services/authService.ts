@@ -1,7 +1,13 @@
 import axios, { AxiosError } from 'axios';
-import { createHash, randomBytes } from 'crypto';
+import { Buffer } from 'buffer';
+import { createHash, randomBytes } from 'crypto-browserify';
 import { getConfigValue } from './configService.js';
 import { BigInteger } from 'jsbn';
+
+// Polyfill Buffer for browser environment
+if (typeof window !== 'undefined') {
+  window.Buffer = window.Buffer || Buffer;
+}
 
 // Constants for AzerothCore SRP6 calculation
 // These match the values used by AzerothCore

@@ -22,14 +22,14 @@ app.use((req, res, next) => {
 });
 
 // Serve static files from the React app
-app.use(express.static(path.join(__dirname, '..', 'client')));
+app.use(express.static(path.join(__dirname, 'client')));
 
 // API routes
 app.use('/api/account', accountsRouter);
 
 // Catch-all handler for SPA
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'index.html'));
+  res.sendFile(path.join(__dirname, 'client', 'index.html'));
 });
 
 // Start the server

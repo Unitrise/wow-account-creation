@@ -100,9 +100,23 @@ if not exist config.cfg (
     echo.
 )
 
+:: Copy config.cfg to dist folder
+echo Copying config.cfg to dist folder...
+if exist config.cfg (
+    copy config.cfg dist\config.cfg >nul
+    if %errorLevel% neq 0 (
+        echo Failed to copy config.cfg to dist folder.
+    ) else (
+        echo Config file copied to dist folder.
+    )
+) else (
+    echo WARNING: config.cfg not found, cannot copy to dist folder.
+)
+echo.
+
 :: Start the application with local PM2
 echo Starting application with PM2...
-call npx pm2 delete wow-client >nul 2>&1
+call npx pm2 delete wow-client-server >nul 2>&1
 call npx pm2 start ecosystem.config.js
 if %errorLevel% neq 0 (
     echo Failed to start application with PM2.
@@ -142,12 +156,12 @@ if defined SERVER_IP (
 echo.
 echo To manage the application:
 echo - View status: npx pm2 list
-echo - View logs: npx pm2 logs wow-client
-echo - Restart: npx pm2 restart wow-client
-echo - Stop: npx pm2 stop wow-client
+echo - View logs: npx pm2 logs wow-client-server
+echo - Restart: npx pm2 restart wow-client-server
+echo - Stop: npx pm2 stop wow-client-server
 echo.
 echo If you encounter any issues, check the logs with:
-echo npx pm2 logs wow-client
+echo npx pm2 logs wow-client-server
 echo.
 
 pause

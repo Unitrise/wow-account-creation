@@ -7,12 +7,17 @@ export default defineConfig({
   define: {
     // Polyfill global to avoid crypto errors
     global: {},
+    'process.env': {}
   },
   build: {
     // Specify the output directory relative to project root
     outDir: 'dist/client',
     // Empty the output directory before building
     emptyOutDir: true,
+    rollupOptions: {
+      // Add external dependencies that shouldn't be bundled
+      external: ['crypto'],
+    }
   },
   resolve: {
     alias: {
@@ -21,6 +26,10 @@ export default defineConfig({
       stream: 'stream-browserify',
       path: 'path-browserify',
       fs: 'memfs',
+      buffer: 'buffer',
     },
   },
+  optimizeDeps: {
+    include: ['buffer', 'crypto-browserify', 'jsbn']
+  }
 })
