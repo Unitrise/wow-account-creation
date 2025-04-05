@@ -149,19 +149,33 @@ const getLocaleId = (language: string = 'en'): number => {
  * @route POST /api/account/create
  */
 router.post('/create', async (req, res) => {
+  console.log('Received account creation request:', req.body);
   const { username, sha_pass_hash, email, expansion = 2 } = req.body;
-  if (!dbPool) {
-    throw new Error('Database pool is not initialized');
+  
+  if (!username || !sha_pass_hash || !email) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username, password hash, and email are required'
+    });
   }
+  
+  let connection;
   try {
+    const currentPool = await getPool();
+    connection = await currentPool.getConnection();
+    
+    const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+    console.log(`Creating account '${username}' in table: ${accountTable}`);
+    
     // Insert account using WoW's standard format
-    const [result] = await dbPool.query(
-      `INSERT INTO account 
+    const [result] = await connection.execute(
+      `INSERT INTO ${accountTable} 
        (username, sha_pass_hash, email, reg_mail, expansion, joindate) 
        VALUES (?, ?, ?, ?, ?, NOW())`,
       [username, sha_pass_hash, email, email, expansion]
     );
 
+    console.log('Account created successfully');
     res.json({
       success: true,
       message: 'Account created successfully'
@@ -169,39 +183,59 @@ router.post('/create', async (req, res) => {
 
   } catch (error: any) {
     console.error('Account creation error:', error);
-    res.json({
+    res.status(500).json({
       success: false,
       message: error.code === 'ER_DUP_ENTRY' 
         ? 'Username already exists' 
-        : 'Failed to create account'
+        : 'Failed to create account',
+      details: error.message
     });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 });
 
+/**
+ * Login account
+ * @route POST /api/auth/login
+ */
 router.post('/login', async (req, res) => {
+  console.log('Received login request');
   const { username, sha_pass_hash } = req.body;
   
+  if (!username || !sha_pass_hash) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username and password hash are required'
+    });
+  }
+  
+  let connection;
   try {
-    if (!dbPool) {
-      throw new Error('Database pool is not initialized');
-    }
-    const [rows] = await dbPool.query<RowDataPacket[]>(
-      'SELECT id FROM account WHERE username = ? AND sha_pass_hash = ?',
+    const currentPool = await getPool();
+    connection = await currentPool.getConnection();
+    
+    const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+    console.log(`Verifying login for '${username}' in table: ${accountTable}`);
+    
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      `SELECT id FROM ${accountTable} WHERE username = ? AND sha_pass_hash = ?`,
       [username, sha_pass_hash]
     );
 
     if (rows.length > 0) {
       // Update last login
-      if (!dbPool) {
-        throw new Error('Database pool is not initialized');
-      }
-      await dbPool.query(
-        'UPDATE account SET last_login = NOW(), last_ip = ? WHERE id = ?',
+      await connection.execute(
+        `UPDATE ${accountTable} SET last_login = NOW(), last_ip = ? WHERE id = ?`,
         [req.ip, rows[0].id]
       );
 
+      console.log('Login successful');
       res.json({ success: true });
     } else {
+      console.log('Login failed: Invalid credentials');
       res.json({ 
         success: false, 
         message: 'Invalid username or password' 
@@ -210,10 +244,15 @@ router.post('/login', async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
-    res.json({ 
+    res.status(500).json({ 
       success: false, 
-      message: 'Login failed' 
+      message: 'Login failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 });
 

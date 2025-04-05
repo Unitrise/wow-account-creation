@@ -61,7 +61,13 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
             locked: 0
         };
 
-        const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+        // Use the current window location as the base URL
+        const baseUrl = typeof window !== 'undefined' 
+            ? window.location.origin 
+            : process.env.API_BASE_URL || 'http://localhost:3000';
+            
+        console.log('Using API base URL:', baseUrl);
+        
         const response = await axios.post(
             `${baseUrl}/api/account/create`,
             registrationData
@@ -86,7 +92,11 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
  */
 export const loginAccount = async (username: string, password: string): Promise<boolean> => {
     try {
-        const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+        // Use the current window location as the base URL
+        const baseUrl = typeof window !== 'undefined' 
+            ? window.location.origin 
+            : process.env.API_BASE_URL || 'http://localhost:3000';
+            
         const response = await axios.post(`${baseUrl}/api/auth/login`, {
             username: username.toUpperCase(),
             sha_pass_hash: calculatePasswordHash(username, password)
