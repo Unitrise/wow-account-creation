@@ -6,8 +6,8 @@ import { getConfigValue } from './configService';
 const dbConfig = {
   host: getConfigValue<string>('DB_HOST', 'localhost'),
   port: getConfigValue<number>('DB_PORT', 3306),
-  user: getConfigValue<string>('DB_USER', 'acore'),
-  password: getConfigValue<string>('DB_PASSWORD', 'password'),
+  user: getConfigValue<string>('DB_USER', 'root'),
+  password: getConfigValue<string>('DB_PASSWORD', 'root'),
   database: getConfigValue<string>('DB_NAME', 'acore_auth'),
 };
 
@@ -19,8 +19,8 @@ if (getConfigValue<string>('USE_CHARS_DB', 'false') === 'true') {
   const charDbConfig = {
     host: getConfigValue<string>('DB_CHARS_HOST', 'localhost'),
     port: getConfigValue<number>('DB_CHARS_PORT', 3306),
-    user: getConfigValue<string>('DB_CHARS_USER', 'acore'),
-    password: getConfigValue<string>('DB_CHARS_PASSWORD', 'password'),
+    user: getConfigValue<string>('DB_CHARS_USER', 'root'),
+    password: getConfigValue<string>('DB_CHARS_PASSWORD', 'root'),
     database: getConfigValue<string>('DB_CHARS_DATABASE', 'acore_characters'),
   };
   // Character pool creation commented out until needed
