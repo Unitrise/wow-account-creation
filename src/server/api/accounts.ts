@@ -288,8 +288,8 @@ router.post('/create', async (req, res) => {
         
         await connection.execute(
           `INSERT INTO ${accountTable} 
-           (username, sha_pass_hash, email, expansion, battlenet_account, battlenet_index) 
-           VALUES (?, ?, ?, ?, ?, ?)`,
+           (username, sha_pass_hash, email, expansion, battlenet_account, battlenet_index, locked, active_realm_id, online) 
+           VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)`,
           [gameAccountName.toUpperCase(), gameAccountHash, email.toUpperCase(), expansion, bnetAccountId, 1]
         );
       } else if (isSRP6Request) {
@@ -367,8 +367,8 @@ router.post('/create', async (req, res) => {
           // Insert the game account
           await connection.execute(
             `INSERT INTO ${accountTable} 
-             (username, ${saltField}, ${verifierField}, email, expansion, battlenet_account, battlenet_index) 
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+             (username, ${saltField}, ${verifierField}, email, expansion, battlenet_account, battlenet_index, locked, active_realm_id, online) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0)`,
             [
               gameAccountName.toUpperCase(),
               gameAccountSalt,
@@ -384,8 +384,8 @@ router.post('/create', async (req, res) => {
           // This is not secure but matches the behavior of some implementations
           await connection.execute(
             `INSERT INTO ${accountTable} 
-             (username, email, expansion, battlenet_account, battlenet_index) 
-             VALUES (?, ?, ?, ?, ?)`,
+             (username, email, expansion, battlenet_account, battlenet_index, locked, active_realm_id, online) 
+             VALUES (?, ?, ?, ?, ?, 0, 0, 0)`,
             [
               gameAccountName.toUpperCase(),
               email.toUpperCase(),
@@ -448,8 +448,8 @@ router.post('/create', async (req, res) => {
       // Insert account using legacy format
       await connection.execute(
         `INSERT INTO ${accountTable} 
-         (username, sha_pass_hash, email, reg_mail, expansion, joindate) 
-         VALUES (?, ?, ?, ?, ?, NOW())`,
+         (username, sha_pass_hash, email, reg_mail, expansion, joindate, locked, active_realm_id, online) 
+         VALUES (?, ?, ?, ?, ?, NOW(), 0, 0, 0)`,
         [username.toUpperCase(), sha_pass_hash, email.toLowerCase(), email.toLowerCase(), expansion]
       );
     } else if (isSRP6Request) {
@@ -477,8 +477,8 @@ router.post('/create', async (req, res) => {
       // Insert account using AzerothCore's SRP6 format
       await connection.execute(
         `INSERT INTO ${accountTable} 
-         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os, session_key) 
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, NULL)`,
+         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os, session_key, locked, active_realm_id, online) 
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, NULL, 0, 0, 0)`,
         [
           username.toUpperCase(), 
           Buffer.from(salt, 'base64'), // Convert base64 string to binary buffer
@@ -533,8 +533,8 @@ router.post('/create', async (req, res) => {
       // Insert account using AzerothCore's SRP6 format (for legacy request conversion)
       await connection.execute(
         `INSERT INTO ${accountTable} 
-         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os, session_key) 
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, NULL)`,
+         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os, session_key, locked, active_realm_id, online) 
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, NULL, 0, 0, 0)`,
         [
           username.toUpperCase(), 
           salt,
@@ -625,7 +625,7 @@ router.post('/login', async (req, res) => {
         
         // Update last login and session key
         await connection.execute(
-          `UPDATE ${accountTable} SET session_key = ?, last_login = NOW(), last_ip = ? WHERE id = ?`,
+          `UPDATE ${accountTable} SET session_key = ?, last_login = NOW(), last_ip = ?, locked = 0, online = 0, active_realm_id = 0 WHERE id = ?`,
           [sessionKey, req.ip || '127.0.0.1', rows[0].id]
         );
         
@@ -720,7 +720,7 @@ router.post('/login', async (req, res) => {
         
         // Update last login and session key
         await connection.execute(
-          `UPDATE ${accountTable} SET session_key = ?, last_login = NOW(), last_ip = ? WHERE id = ?`,
+          `UPDATE ${accountTable} SET session_key = ?, last_login = NOW(), last_ip = ?, locked = 0, online = 0, active_realm_id = 0 WHERE id = ?`,
           [sessionKey, req.ip || '127.0.0.1', account.id]
         );
 
