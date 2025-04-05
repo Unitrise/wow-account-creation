@@ -30,9 +30,10 @@ if not exist package.json (
     exit /b 1
 )
 
-:: Install dependencies
+:: Install dependencies including PM2 locally
 echo Installing dependencies...
 call npm install
+call npm install pm2 --save-dev
 if %errorLevel% neq 0 (
     echo Failed to install dependencies.
     pause
@@ -61,29 +62,6 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 echo Server built successfully.
-echo.
-
-:: Install PM2 globally with proper error handling
-echo Installing PM2 globally...
-call npm install -g pm2
-if %errorLevel% neq 0 (
-    echo Failed to install PM2 globally.
-    pause
-    exit /b 1
-)
-echo PM2 installed successfully.
-echo.
-
-:: Get npm global installation path
-for /f "tokens=*" %%i in ('npm config get prefix') do set NPM_PREFIX=%%i
-set NPM_BIN=%NPM_PREFIX%\node_modules\npm\bin
-set PM2_PATH=%NPM_PREFIX%\node_modules\pm2\bin\pm2.cmd
-
-:: Add npm global bin to PATH if not already there
-echo Adding PM2 to PATH...
-set "PATH=%PATH%;%NPM_PREFIX%;%NPM_BIN%"
-setx PATH "%PATH%" /M
-echo PATH updated.
 echo.
 
 :: Configure Windows Firewall with proper error handling
@@ -131,55 +109,38 @@ if not exist config.cfg (
     echo.
 )
 
-:: Start the application with PM2 using full path
-echo Starting application with PM2...
-if exist "%PM2_PATH%" (
-    call "%PM2_PATH%" delete wow-client >nul 2>&1
-    call "%PM2_PATH%" start dist/server/server.js --name wow-client
-    if %errorLevel% neq 0 (
-        echo Failed to start application with PM2.
-        echo Trying to run directly...
-        node dist/server/server.js
-        pause
-        exit /b 1
-    )
-    echo Application started successfully with PM2.
-) else (
-    echo PM2 executable not found at: %PM2_PATH%
-    echo Trying to run directly...
-    node dist/server/server.js
-    pause
-    exit /b 1
-)
-echo.
+:: Create a PM2 ecosystem file for better process management
+echo Creating PM2 ecosystem file...
+(
+echo {
+echo   "apps": [
+echo     {
+echo       "name": "wow-client",
+echo       "script": "node_modules/.bin/vite",
+echo       "cwd": "%PROJECT_DIR%",
+echo       "env": {
+echo         "NODE_ENV": "production"
+echo       }
+echo     },
+echo     {
+echo       "name": "wow-server",
+echo       "script": "dist/server/server.js",
+echo       "cwd": "%PROJECT_DIR%",
+echo       "env": {
+echo         "NODE_ENV": "production"
+echo       }
+echo     }
+echo   ]
+echo }
+) > ecosystem.config.js
 
-:: Save PM2 configuration
-echo Saving PM2 configuration...
-call "%PM2_PATH%" save
-if %errorLevel% neq 0 (
-    echo Failed to save PM2 configuration.
-    pause
-    exit /b 1
-)
-echo PM2 configuration saved.
-echo.
+:: Start the client and server in separate windows
+echo Starting client and server...
+start "WoW Client" cmd /k "cd /d %PROJECT_DIR% && node_modules\.bin\pm2 start ecosystem.config.js --only wow-client"
+start "WoW Server" cmd /k "cd /d %PROJECT_DIR% && node_modules\.bin\pm2 start ecosystem.config.js --only wow-server"
 
-:: Setup PM2 as a Windows service
-echo Setting up PM2 as a Windows service...
-call npm install -g pm2-windows-service
-if %errorLevel% neq 0 (
-    echo Failed to install PM2 Windows Service.
-    echo Your application is running, but won't automatically start when Windows boots.
-) else (
-    call pm2-service-install -n PM2
-    if %errorLevel% neq 0 (
-        echo Failed to install PM2 as a Windows service.
-        echo Your application is running, but won't automatically start when Windows boots.
-    ) else (
-        echo PM2 Windows service installed successfully.
-    )
-)
-echo.
+:: Wait a moment for the processes to start
+timeout /t 5 /nobreak > nul
 
 :: Get server IP address
 for /f "tokens=*" %%a in ('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Ethernet*,Wi-Fi*,vEthernet* | Where-Object {$_.IPAddress -notmatch '127.0.0.1'}).IPAddress"') do set SERVER_IP=%%a
@@ -197,13 +158,17 @@ if defined SERVER_IP (
 )
 echo.
 echo To manage the application:
-echo - View status: pm2 list
-echo - View logs: pm2 logs wow-client
-echo - Restart: pm2 restart wow-client
-echo - Stop: pm2 stop wow-client
+echo - View status: node_modules\.bin\pm2 list
+echo - View logs: node_modules\.bin\pm2 logs
+echo - Restart client: node_modules\.bin\pm2 restart wow-client
+echo - Restart server: node_modules\.bin\pm2 restart wow-server
+echo - Stop all: node_modules\.bin\pm2 stop all
 echo.
 echo If you encounter any issues, check the logs with:
-echo pm2 logs wow-client
+echo node_modules\.bin\pm2 logs
+echo.
+echo Note: The client and server are running in separate console windows.
+echo You can monitor their output in those windows.
 echo.
 
 pause
