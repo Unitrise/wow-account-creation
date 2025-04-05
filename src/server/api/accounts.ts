@@ -165,15 +165,21 @@ router.post('/create', async (req, res) => {
     // Get account table name from config
     const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
     
+    // Detect the authentication method based on the request payload
+    const isSRP6Request = req.body.salt && req.body.verifier;
+    const isLegacyRequest = req.body.password && !isSRP6Request;
+    
+    console.log(`Request type detected: ${isSRP6Request ? 'SRP6' : isLegacyRequest ? 'Legacy' : 'Unknown'}`);
+    
     // Check if the account table has sha_pass_hash column (legacy mode)
     const [columns] = await connection.execute(
       `SHOW COLUMNS FROM ${accountTable} LIKE 'sha_pass_hash'`
     );
     
-    const useLegacyAuth = Array.isArray(columns) && columns.length > 0;
-    console.log(`Using ${useLegacyAuth ? 'legacy SHA1' : 'SRP6'} authentication`);
+    const hasLegacyColumn = Array.isArray(columns) && columns.length > 0;
+    console.log(`Database supports legacy auth: ${hasLegacyColumn ? 'Yes' : 'No'}`);
     
-    if (useLegacyAuth) {
+    if (isLegacyRequest && hasLegacyColumn) {
       // Legacy authentication with sha_pass_hash
       const { username, password, email, expansion = 2 } = req.body;
       
@@ -199,7 +205,7 @@ router.post('/create', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, NOW())`,
         [username.toUpperCase(), sha_pass_hash, email.toLowerCase(), email.toLowerCase(), expansion]
       );
-    } else {
+    } else if (isSRP6Request) {
       // Modern SRP6 authentication with salt and verifier
       const { 
         username, 
@@ -237,6 +243,67 @@ router.post('/create', async (req, res) => {
           os
         ]
       );
+    } else if (isLegacyRequest && !hasLegacyColumn) {
+      // Legacy request but no sha_pass_hash column - generate SRP6 credentials
+      const { username, password, email, expansion = 2 } = req.body;
+      
+      if (!username || !password || !email) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username, password, and email are required'
+        });
+      }
+      
+      console.log(`Converting legacy request to SRP6 for account '${username}'`);
+      
+      // Generate a random 32-byte salt
+      const salt = crypto.randomBytes(32);
+      
+      // Calculate verifier
+      // Step 1: Get h1 = SHA1(username:password)
+      const h1 = crypto.createHash('sha1')
+        .update(`${username.toUpperCase()}:${password.toUpperCase()}`)
+        .digest('hex')
+        .toUpperCase();
+      
+      // Step 2: Get h2 = SHA1(salt | h1)
+      const saltHex = salt.toString('hex').toUpperCase();
+      const h2 = crypto.createHash('sha1')
+        .update(saltHex + h1)
+        .digest('hex')
+        .toUpperCase();
+      
+      // Step 3: Calculate v = g^x % N
+      const x = BigInt('0x' + h2);
+      const N_BIGINT = BigInt('0x' + N_HEX);
+      const g_BIGINT = BigInt(g_HEX);
+      const v = modPow(g_BIGINT, x, N_BIGINT);
+      
+      // Step 4: Convert v to a binary buffer
+      const vHex = v.toString(16).padStart(64, '0');
+      const verifier = Buffer.from(vHex, 'hex');
+      
+      // Insert account using AzerothCore's SRP6 format
+      await connection.execute(
+        `INSERT INTO ${accountTable} 
+         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os) 
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+        [
+          username.toUpperCase(), 
+          salt,
+          verifier,
+          email.toLowerCase(), 
+          email.toLowerCase(), 
+          expansion,
+          0, // locale
+          'Win' // os
+        ]
+      );
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request format or unsupported authentication method'
+      });
     }
 
     console.log('Account created successfully');
