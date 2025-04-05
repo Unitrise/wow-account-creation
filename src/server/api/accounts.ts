@@ -145,55 +145,99 @@ const getLocaleId = (language: string = 'en'): number => {
   return localeMap[baseLanguage] || 0;
 };
 
+// Constants for WoW's SRP6
+const N_HEX = '894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7';
+const g_HEX = '7';
+
 /**
  * Create a new account
  * @route POST /api/account/create
  */
 router.post('/create', async (req, res) => {
   console.log('Received account creation request:', req.body);
-  const { 
-    username, 
-    // For SRP6 we need salt and verifier instead of sha_pass_hash
-    salt, 
-    verifier, 
-    email, 
-    reg_mail = email,
-    expansion = 2,
-    locale = 0,
-    os = 'Win' 
-  } = req.body;
-  
-  if (!username || !salt || !verifier || !email) {
-    return res.status(400).json({
-      success: false,
-      message: 'Username, salt, verifier, and email are required'
-    });
-  }
-  
   let connection;
+
   try {
+    // Get database connection
     const currentPool = await getPool();
     connection = await currentPool.getConnection();
     
+    // Get account table name from config
     const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
-    console.log(`Creating account '${username}' in table: ${accountTable}`);
     
-    // Insert account using AzerothCore's table structure
-    const [result] = await connection.execute(
-      `INSERT INTO ${accountTable} 
-       (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os) 
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
-      [
-        username, 
-        Buffer.from(salt, 'base64'), // Convert base64 string to binary buffer
-        Buffer.from(verifier, 'base64'), // Convert base64 string to binary buffer
-        email, 
-        reg_mail, 
-        expansion,
-        locale,
-        os
-      ]
+    // Check if the account table has sha_pass_hash column (legacy mode)
+    const [columns] = await connection.execute(
+      `SHOW COLUMNS FROM ${accountTable} LIKE 'sha_pass_hash'`
     );
+    
+    const useLegacyAuth = Array.isArray(columns) && columns.length > 0;
+    console.log(`Using ${useLegacyAuth ? 'legacy SHA1' : 'SRP6'} authentication`);
+    
+    if (useLegacyAuth) {
+      // Legacy authentication with sha_pass_hash
+      const { username, password, email, expansion = 2 } = req.body;
+      
+      if (!username || !password || !email) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username, password, and email are required'
+        });
+      }
+      
+      // Calculate SHA1 hash in the format AzerothCore expects
+      const sha_pass_hash = crypto.createHash('sha1')
+        .update(`${username.toUpperCase()}:${password.toUpperCase()}`)
+        .digest('hex')
+        .toUpperCase();
+      
+      console.log(`Creating account '${username}' using legacy SHA1 authentication`);
+      
+      // Insert account using legacy format
+      await connection.execute(
+        `INSERT INTO ${accountTable} 
+         (username, sha_pass_hash, email, reg_mail, expansion, joindate) 
+         VALUES (?, ?, ?, ?, ?, NOW())`,
+        [username.toUpperCase(), sha_pass_hash, email.toLowerCase(), email.toLowerCase(), expansion]
+      );
+    } else {
+      // Modern SRP6 authentication with salt and verifier
+      const { 
+        username, 
+        salt, 
+        verifier, 
+        email, 
+        reg_mail = email,
+        expansion = 2,
+        locale = 0,
+        os = 'Win' 
+      } = req.body;
+      
+      if (!username || !salt || !verifier || !email) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username, salt, verifier, and email are required'
+        });
+      }
+      
+      console.log(`Creating account '${username}' using SRP6 authentication`);
+      
+      // Insert account using AzerothCore's SRP6 format
+      await connection.execute(
+        `INSERT INTO ${accountTable} 
+         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os) 
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+        [
+          username.toUpperCase(), 
+          Buffer.from(salt, 'base64'), // Convert base64 string to binary buffer
+          Buffer.from(verifier, 'base64'), // Convert base64 string to binary buffer
+          email.toLowerCase(), 
+          reg_mail.toLowerCase(), 
+          expansion,
+          locale,
+          os
+        ]
+      );
+    }
 
     console.log('Account created successfully');
     res.json({
@@ -217,10 +261,6 @@ router.post('/create', async (req, res) => {
   }
 });
 
-// Constants for WoW's SRP6
-const N_HEX = '894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7';
-const g_HEX = '7';
-
 /**
  * Login account
  * @route POST /api/auth/login
@@ -242,89 +282,141 @@ router.post('/login', async (req, res) => {
     connection = await currentPool.getConnection();
     
     const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
-    console.log(`Verifying login for '${username}' in table: ${accountTable}`);
     
-    // First get the account details including salt and verifier
-    const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT id, username, salt, verifier FROM ${accountTable} WHERE username = ?`,
-      [username.toUpperCase()]
+    // Check if the account table has sha_pass_hash column (legacy mode)
+    const [columns] = await connection.execute(
+      `SHOW COLUMNS FROM ${accountTable} LIKE 'sha_pass_hash'`
     );
-
-    if (!rows || rows.length === 0) {
-      console.log('Login failed: Account not found');
-      return res.json({ 
-        success: false, 
-        message: 'Invalid username or password' 
-      });
-    }
-
-    const account = rows[0];
     
-    // For simplicity in a web application, we're using a direct login approach
-    // This is not the full SRP6 protocol used by the game client
+    const useLegacyAuth = Array.isArray(columns) && columns.length > 0;
+    console.log(`Using ${useLegacyAuth ? 'legacy SHA1' : 'SRP6'} authentication for login`);
     
-    // Step 1: Get the stored salt
-    const salt = account.salt; // This is a binary buffer
-    
-    // Step 2: Calculate h1 = SHA1(username:password)
-    const h1 = crypto.createHash('sha1')
-      .update(`${username.toUpperCase()}:${password.toUpperCase()}`)
-      .digest('hex')
-      .toUpperCase();
-    
-    // Step 3: Calculate h2 = SHA1(salt | h1)
-    const saltHex = salt.toString('hex').toUpperCase();
-    const h2 = crypto.createHash('sha1')
-      .update(saltHex + h1)
-      .digest('hex')
-      .toUpperCase();
-    
-    // Step 4: Convert h2 to a BigInteger
-    const x = BigInt('0x' + h2);
-    
-    // Step 5: Calculate v = g^x % N
-    const N_BIGINT = BigInt('0x' + N_HEX);
-    const g_BIGINT = BigInt(g_HEX);
-    const v = modPow(g_BIGINT, x, N_BIGINT);
-    
-    // Step 6: Convert v to a byte array and compare with stored verifier
-    const vHex = v.toString(16).padStart(64, '0');
-    const calculatedVerifier = Buffer.from(vHex, 'hex');
-    const storedVerifier = account.verifier; // This is a binary buffer
-    
-    // Compare calculated verifier with stored verifier
-    let isPasswordValid = false;
-    try {
-      // For more robust comparison, use a constant-time comparison function
-      isPasswordValid = crypto.timingSafeEqual(calculatedVerifier, storedVerifier);
-    } catch (e) {
-      console.error('Verifier comparison error:', e);
-      isPasswordValid = false;
-    }
-    
-    if (isPasswordValid) {
-      // Update last login
-      await connection.execute(
-        `UPDATE ${accountTable} SET last_login = NOW(), last_ip = ? WHERE id = ?`,
-        [req.ip, account.id]
-      );
-
-      console.log('Login successful');
-      res.json({ success: true });
-    } else {
-      // Update failed logins count
-      await connection.execute(
-        `UPDATE ${accountTable} SET failed_logins = failed_logins + 1, last_attempt_ip = ? WHERE id = ?`,
-        [req.ip, account.id]
+    if (useLegacyAuth) {
+      // Legacy authentication with sha_pass_hash
+      // Calculate SHA1 hash in the format AzerothCore expects
+      const sha_pass_hash = crypto.createHash('sha1')
+        .update(`${username.toUpperCase()}:${password.toUpperCase()}`)
+        .digest('hex')
+        .toUpperCase();
+      
+      // Verify credentials
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        `SELECT id FROM ${accountTable} WHERE username = ? AND sha_pass_hash = ?`,
+        [username.toUpperCase(), sha_pass_hash]
       );
       
-      console.log('Login failed: Invalid password');
-      res.json({ 
-        success: false, 
-        message: 'Invalid username or password' 
-      });
-    }
+      if (rows.length > 0) {
+        // Update last login
+        await connection.execute(
+          `UPDATE ${accountTable} SET last_login = NOW(), last_ip = ? WHERE id = ?`,
+          [req.ip || '127.0.0.1', rows[0].id]
+        );
+        
+        console.log('Login successful using legacy authentication');
+        return res.json({ success: true });
+      } else {
+        // Update failed logins count
+        const [accountRows] = await connection.execute<RowDataPacket[]>(
+          `SELECT id FROM ${accountTable} WHERE username = ?`,
+          [username.toUpperCase()]
+        );
+        
+        if (accountRows.length > 0) {
+          await connection.execute(
+            `UPDATE ${accountTable} SET failed_logins = failed_logins + 1, last_attempt_ip = ? WHERE id = ?`,
+            [req.ip || '127.0.0.1', accountRows[0].id]
+          );
+        }
+        
+        console.log('Login failed: Invalid password (legacy authentication)');
+        return res.json({ 
+          success: false, 
+          message: 'Invalid username or password' 
+        });
+      }
+    } else {
+      // SRP6 authentication
+      // Get account data
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        `SELECT id, username, salt, verifier FROM ${accountTable} WHERE username = ?`,
+        [username.toUpperCase()]
+      );
 
+      if (!rows || rows.length === 0) {
+        console.log('Login failed: Account not found');
+        return res.json({ 
+          success: false, 
+          message: 'Invalid username or password' 
+        });
+      }
+
+      const account = rows[0];
+      
+      // For simplicity in a web application, we're using a direct login approach
+      // This is not the full SRP6 protocol used by the game client
+      
+      // Step 1: Get the stored salt
+      const salt = account.salt; // This is a binary buffer
+      
+      // Step 2: Calculate h1 = SHA1(username:password)
+      const h1 = crypto.createHash('sha1')
+        .update(`${username.toUpperCase()}:${password.toUpperCase()}`)
+        .digest('hex')
+        .toUpperCase();
+      
+      // Step 3: Calculate h2 = SHA1(salt | h1)
+      const saltHex = salt.toString('hex').toUpperCase();
+      const h2 = crypto.createHash('sha1')
+        .update(saltHex + h1)
+        .digest('hex')
+        .toUpperCase();
+      
+      // Step 4: Convert h2 to a BigInteger
+      const x = BigInt('0x' + h2);
+      
+      // Step 5: Calculate v = g^x % N
+      const N_BIGINT = BigInt('0x' + N_HEX);
+      const g_BIGINT = BigInt(g_HEX);
+      const v = modPow(g_BIGINT, x, N_BIGINT);
+      
+      // Step 6: Convert v to a byte array and compare with stored verifier
+      const vHex = v.toString(16).padStart(64, '0');
+      const calculatedVerifier = Buffer.from(vHex, 'hex');
+      const storedVerifier = account.verifier; // This is a binary buffer
+      
+      // Compare calculated verifier with stored verifier
+      let isPasswordValid = false;
+      try {
+        // For more robust comparison, use a constant-time comparison function
+        isPasswordValid = crypto.timingSafeEqual(calculatedVerifier, storedVerifier);
+      } catch (e) {
+        console.error('Verifier comparison error:', e);
+        isPasswordValid = false;
+      }
+      
+      if (isPasswordValid) {
+        // Update last login
+        await connection.execute(
+          `UPDATE ${accountTable} SET last_login = NOW(), last_ip = ? WHERE id = ?`,
+          [req.ip || '127.0.0.1', account.id]
+        );
+
+        console.log('Login successful using SRP6 authentication');
+        res.json({ success: true });
+      } else {
+        // Update failed logins count
+        await connection.execute(
+          `UPDATE ${accountTable} SET failed_logins = failed_logins + 1, last_attempt_ip = ? WHERE id = ?`,
+          [req.ip || '127.0.0.1', account.id]
+        );
+        
+        console.log('Login failed: Invalid password (SRP6 authentication)');
+        res.json({ 
+          success: false, 
+          message: 'Invalid username or password' 
+        });
+      }
+    }
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ 

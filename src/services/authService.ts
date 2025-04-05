@@ -19,6 +19,10 @@ const N = new BigInteger(N_HEX, 16);
 const g = new BigInteger(g_HEX, 16);
 const k = new BigInteger(k_HEX, 16);
 
+// Configuration - set this to match your server's authentication method
+// You can also fetch this from your server API if it's dynamically detected
+const USE_LEGACY_AUTH = true; // Set to false to use SRP6 authentication
+
 // Interfaces
 export interface AccountData {
   username: string;
@@ -39,6 +43,14 @@ export interface RegisterResponse {
  */
 function sha1(data: string): string {
   return Hex.stringify(SHA1(data)).toUpperCase();
+}
+
+/**
+ * Calculate WoW's legacy password hash
+ * SHA1(UPPER(username) + ':' + UPPER(password))
+ */
+function calculateLegacyHash(username: string, password: string): string {
+  return sha1(`${username.toUpperCase()}:${password.toUpperCase()}`);
 }
 
 /**
@@ -68,18 +80,11 @@ function calculateSRP6Verifier(username: string, password: string, salt: Uint8Ar
 }
 
 /**
- * Register account using WoW's SRP6 authentication
+ * Register account using either legacy SHA1 or SRP6 authentication
  */
 export const registerAccount = async (accountData: AccountData): Promise<RegisterResponse> => {
   try {
     const { username, email, password } = accountData;
-    
-    // Generate a random 32-byte salt
-    const salt = new Uint8Array(32);
-    window.crypto.getRandomValues(salt);
-    
-    // Calculate the verifier using the salt and user credentials
-    const verifier = calculateSRP6Verifier(username, password, salt);
     
     // Use the current window location as the base URL
     const baseUrl = typeof window !== 'undefined' 
@@ -88,19 +93,42 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
       
     console.log('Using API base URL:', baseUrl);
     
-    // Prepare registration data matching AzerothCore schema
-    const registrationData = {
-      username: username.toUpperCase(),
-      salt: Buffer.from(salt).toString('base64'),
-      verifier: Buffer.from(verifier).toString('base64'),
-      email: email.toLowerCase(),
-      reg_mail: email.toLowerCase(),
-      expansion: accountData.expansion || 2,
-      locale: 0,
-      os: 'Win'
-    };
+    let registrationData;
     
-    console.log('Sending registration data with SRP6 authentication');
+    if (USE_LEGACY_AUTH) {
+      // Legacy authentication with sha_pass_hash
+      console.log('Using legacy SHA1 authentication for registration');
+      
+      registrationData = {
+        username: username.toUpperCase(),
+        password: password, // Send the plain password, server will hash it
+        email: email.toLowerCase(),
+        expansion: accountData.expansion || 2
+      };
+    } else {
+      // SRP6 authentication with salt and verifier
+      console.log('Using SRP6 authentication for registration');
+      
+      // Generate a random 32-byte salt
+      const salt = new Uint8Array(32);
+      window.crypto.getRandomValues(salt);
+      
+      // Calculate the verifier using the salt and user credentials
+      const verifier = calculateSRP6Verifier(username, password, salt);
+      
+      registrationData = {
+        username: username.toUpperCase(),
+        salt: Buffer.from(salt).toString('base64'),
+        verifier: Buffer.from(verifier).toString('base64'),
+        email: email.toLowerCase(),
+        reg_mail: email.toLowerCase(),
+        expansion: accountData.expansion || 2,
+        locale: 0,
+        os: 'Win'
+      };
+    }
+    
+    console.log('Sending registration data');
     
     const response = await axios.post(
       `${baseUrl}/api/account/create`,
@@ -122,8 +150,7 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
 };
 
 /**
- * Login using WoW's standard password hash
- * Note: Login should be implemented separately using SRP6 challenge-response protocol
+ * Login using either legacy SHA1 or SRP6 authentication
  */
 export const loginAccount = async (username: string, password: string): Promise<boolean> => {
   try {
@@ -131,11 +158,29 @@ export const loginAccount = async (username: string, password: string): Promise<
     const baseUrl = typeof window !== 'undefined' 
       ? window.location.origin 
       : process.env.API_BASE_URL || 'http://localhost:3000';
+    
+    let loginData;
+    
+    if (USE_LEGACY_AUTH) {
+      // Legacy authentication with sha_pass_hash
+      console.log('Using legacy SHA1 authentication for login');
       
-    const response = await axios.post(`${baseUrl}/api/auth/login`, {
-      username: username.toUpperCase(),
-      password: password.toUpperCase()
-    });
+      loginData = {
+        username: username.toUpperCase(),
+        password: password // Send the plain password, server will hash it
+      };
+    } else {
+      // For SRP6, we should implement the challenge-response protocol
+      // For simplicity, we're just sending the credentials directly
+      console.log('Using SRP6 authentication for login');
+      
+      loginData = {
+        username: username.toUpperCase(),
+        password: password
+      };
+    }
+      
+    const response = await axios.post(`${baseUrl}/api/auth/login`, loginData);
     
     return response.data.success;
   } catch (error) {
