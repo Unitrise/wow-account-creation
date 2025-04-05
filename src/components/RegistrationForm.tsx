@@ -213,18 +213,36 @@ export const RegistrationForm: React.FC = () => {
       
       console.log(`Using ${useSoap ? 'SOAP' : 'database'} method for account creation`);
       
-      // Try SOAP first, fall back to database method if not enabled or fails
-      let result = useSoap 
-        ? await registerAccountWithSoap(accountData)
-        : await registerAccount(accountData);
+      let result;
+      let soapError = null;
       
-      // If SOAP failed and we have database fallback enabled, try that
-      if (!result.success && useSoap && getConfigValue<boolean>('ENABLE_DB_FALLBACK', true)) {
-        console.log('SOAP registration failed, falling back to database method');
+      // Try SOAP first if enabled
+      if (useSoap) {
+        try {
+          result = await registerAccountWithSoap(accountData);
+        } catch (err: any) {
+          console.error('SOAP registration error:', err);
+          soapError = err.message || 'SOAP connection failed';
+          // Don't set result yet - we'll try the fallback
+        }
+      }
+      
+      // If SOAP failed or was not enabled, use database method
+      if (!useSoap || (soapError && getConfigValue<boolean>('ENABLE_DB_FALLBACK', true))) {
+        console.log('Using database method for account creation');
+        
+        if (soapError) {
+          console.log(`SOAP registration failed (${soapError}), falling back to database method`);
+        }
+        
         result = await registerAccount(accountData);
       }
       
       console.log('Registration result:', result);
+      
+      if (!result) {
+        throw new Error('No registration result returned');
+      }
       
       if (result.success) {
         // Clear form
@@ -234,14 +252,26 @@ export const RegistrationForm: React.FC = () => {
         setConfirmPassword('');
         setIsBattleNet(false);
         
+        let successMessage = t('registration.success', { serverName });
+        
+        // If SOAP failed but DB worked, add a note about it
+        if (soapError) {
+          successMessage += `\n\n${t('registration.soapWarning', { message: soapError })}`;
+        }
+        
         // Show success message
-        alert(t('registration.success', { serverName }));
+        alert(successMessage);
       } else {
-        setError(result.message || t('registration.errors.registrationFailed'));
+        // If SOAP failed AND DB failed, show both errors
+        if (soapError) {
+          setError(`${result.message || t('registration.errors.registrationFailed')} (SOAP error: ${soapError})`);
+        } else {
+          setError(result.message || t('registration.errors.registrationFailed'));
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Registration error:', err);
-      setError(t('registration.errors.serverError'));
+      setError(err.message || t('registration.errors.serverError'));
     } finally {
       setLoading(false);
     }

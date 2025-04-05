@@ -217,6 +217,49 @@ router.post('/create', async (req, res) => {
     // Get account table name from config
     const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
     
+    // Check available columns to adapt to different AzerothCore versions
+    const [accountColumns] = await connection.execute<RowDataPacket[]>(`SHOW COLUMNS FROM ${accountTable}`);
+    
+    // Create a set of available columns for easier lookups
+    const availableColumns = new Set<string>();
+    if (Array.isArray(accountColumns)) {
+      for (const col of accountColumns) {
+        if (col.Field) {
+          availableColumns.add(col.Field.toLowerCase());
+        }
+      }
+    }
+    
+    console.log(`Available account columns: ${Array.from(availableColumns).join(', ')}`);
+    
+    // Helper function to build insert query based on available columns
+    const buildInsertQuery = (baseColumns: Record<string, any>, additionalColumns: Record<string, any> = {}) => {
+      const columns: string[] = [];
+      const placeholders: string[] = [];
+      const values: any[] = [];
+      
+      // Add base columns that we know are required
+      for (const [col, val] of Object.entries(baseColumns)) {
+        columns.push(col);
+        placeholders.push('?');
+        values.push(val);
+      }
+      
+      // Add additional columns only if they exist in the database
+      for (const [col, val] of Object.entries(additionalColumns)) {
+        if (availableColumns.has(col.toLowerCase())) {
+          columns.push(col);
+          placeholders.push('?');
+          values.push(val);
+        }
+      }
+      
+      return {
+        query: `INSERT INTO ${accountTable} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`,
+        values
+      };
+    };
+
     // Check if we're processing a Battle.net account
     const isBattleNetRequest = req.body.isBattleNet || req.body.bnet_hash;
     
@@ -448,13 +491,28 @@ router.post('/create', async (req, res) => {
       
       console.log(`Creating account '${username}' using legacy SHA1 authentication`);
       
-      // Insert account using legacy format
-      await connection.execute(
-        `INSERT INTO ${accountTable} 
-         (username, sha_pass_hash, email, reg_mail, expansion, joindate, locked, active_realm_id, online) 
-         VALUES (?, ?, ?, ?, ?, NOW(), 0, 0, 0)`,
-        [username.toUpperCase(), sha_pass_hash, email.toLowerCase(), email.toLowerCase(), expansion]
-      );
+      // Build base columns that are required
+      const baseColumns = {
+        username: username.toUpperCase(),
+        sha_pass_hash: sha_pass_hash,
+        email: email.toLowerCase(),
+        reg_mail: email.toLowerCase(),
+        expansion: expansion,
+        joindate: new Date()
+      };
+      
+      // Add optional columns if they exist
+      const additionalColumns = {
+        locked: 0,
+        active_realm_id: 0,
+        online: 0
+      };
+      
+      const { query, values } = buildInsertQuery(baseColumns, additionalColumns);
+      
+      // Insert account using legacy format with available columns
+      await connection.execute(query, values);
+      
     } else if (isSRP6Request) {
       // Modern SRP6 authentication with salt and verifier
       const { 
@@ -477,22 +535,32 @@ router.post('/create', async (req, res) => {
       
       console.log(`Creating account '${username}' using SRP6 authentication`);
       
-      // Insert account using AzerothCore's SRP6 format
-      await connection.execute(
-        `INSERT INTO ${accountTable} 
-         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os, session_key, locked, active_realm_id, online) 
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, NULL, 0, 0, 0)`,
-        [
-          username.toUpperCase(), 
-          Buffer.from(salt, 'base64'), // Convert base64 string to binary buffer
-          Buffer.from(verifier, 'base64'), // Convert base64 string to binary buffer
-          email.toLowerCase(), 
-          reg_mail.toLowerCase(), 
-          expansion,
-          locale,
-          os
-        ]
-      );
+      // Build base columns that are required
+      const baseColumns = {
+        username: username.toUpperCase(),
+        salt: Buffer.from(salt, 'base64'),
+        verifier: Buffer.from(verifier, 'base64'),
+        email: email.toLowerCase(),
+        reg_mail: reg_mail.toLowerCase(),
+        expansion: expansion,
+        joindate: new Date(),
+        locale: locale,
+        os: os
+      };
+      
+      // Add optional columns if they exist
+      const additionalColumns = {
+        session_key: null,
+        locked: 0,
+        active_realm_id: 0,
+        online: 0
+      };
+      
+      const { query, values } = buildInsertQuery(baseColumns, additionalColumns);
+      
+      // Insert account using AzerothCore's SRP6 format with available columns
+      await connection.execute(query, values);
+      
     } else if (isLegacyRequest && !hasLegacyColumn) {
       // Legacy request but no sha_pass_hash column - generate SRP6 credentials
       const { username, password, email, expansion = 2 } = req.body;
@@ -533,22 +601,32 @@ router.post('/create', async (req, res) => {
       const vHex = v.toString(16).padStart(64, '0');
       const verifier = Buffer.from(vHex, 'hex');
       
-      // Insert account using AzerothCore's SRP6 format (for legacy request conversion)
-      await connection.execute(
-        `INSERT INTO ${accountTable} 
-         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os, session_key, locked, active_realm_id, online) 
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, NULL, 0, 0, 0)`,
-        [
-          username.toUpperCase(), 
-          salt,
-          verifier,
-          email.toLowerCase(), 
-          email.toLowerCase(), 
-          expansion,
-          0, // locale
-          'Win' // os
-        ]
-      );
+      // Build base columns that are required
+      const baseColumns = {
+        username: username.toUpperCase(),
+        salt: salt,
+        verifier: verifier,
+        email: email.toLowerCase(),
+        reg_mail: email.toLowerCase(),
+        expansion: expansion,
+        joindate: new Date(),
+        locale: 0,
+        os: 'Win'
+      };
+      
+      // Add optional columns if they exist
+      const additionalColumns = {
+        session_key: null,
+        locked: 0,
+        active_realm_id: 0,
+        online: 0
+      };
+      
+      const { query, values } = buildInsertQuery(baseColumns, additionalColumns);
+      
+      // Insert account using AzerothCore's SRP6 format with available columns
+      await connection.execute(query, values);
+      
     } else {
       return res.status(400).json({
         success: false,
@@ -923,6 +1001,67 @@ router.post('/create-with-soap', async (req, res) => {
       success: false,
       message: 'Failed to create account via SOAP',
       details: error.message
+    });
+  }
+});
+
+/**
+ * Test SOAP connection
+ * @route GET /api/soap/test
+ */
+router.get('/soap/test', async (req, res) => {
+  console.log('Testing SOAP connection...');
+  
+  try {
+    // Get SOAP settings
+    const soapOptions = soapService.getSoapOptions();
+    console.log('SOAP Settings:', {
+      host: soapOptions.host,
+      port: soapOptions.port,
+      username: soapOptions.username,
+      protocol: soapOptions.protocol
+    });
+    
+    // Try a simple command that should always work if SOAP is properly configured
+    const result = await soapService.executeSoapCommand('server info');
+    
+    console.log('SOAP Connection Test Result:', result);
+    
+    res.json({
+      success: true,
+      message: 'SOAP connection successful',
+      result,
+      settings: {
+        host: soapOptions.host,
+        port: soapOptions.port,
+        username: soapOptions.username,
+        protocol: soapOptions.protocol
+      }
+    });
+  } catch (error: any) {
+    console.error('SOAP connection test failed:', error);
+    
+    // Extract useful information from the error
+    let errorDetails = '';
+    if (error.code === 'ECONNREFUSED') {
+      errorDetails = `Connection refused to ${soapService.getSoapOptions().host}:${soapService.getSoapOptions().port}. Make sure SOAP is enabled in worldserver.conf and the port matches.`;
+    } else if (error.code === 'ECONNRESET') {
+      errorDetails = 'Connection reset. The server might be rejecting the connection due to incorrect credentials or IP restrictions.';
+    } else if (error.response && error.response.status === 401) {
+      errorDetails = 'Authentication failed. Check your SOAP username and password.';
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'SOAP connection failed',
+      error: error.message,
+      details: errorDetails,
+      settings: {
+        host: soapService.getSoapOptions().host,
+        port: soapService.getSoapOptions().port,
+        username: soapService.getSoapOptions().username,
+        protocol: soapService.getSoapOptions().protocol
+      }
     });
   }
 });

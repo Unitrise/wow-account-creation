@@ -17,8 +17,8 @@ export interface SoapOptions {
  */
 export const getSoapOptions = (): SoapOptions => {
   return {
-    host: getConfigValue<string>('SOAP_HOST', 'localhost'),
-    port: getConfigValue<number>('SOAP_PORT', 7878),
+    host: getConfigValue<string>('SOAP_HOST', '127.0.0.1'),
+    port: getConfigValue<number>('SOAP_PORT', 7878), // Default SOAP port for AzerothCore
     username: getConfigValue<string>('SOAP_USERNAME', 'admin'),
     password: getConfigValue<string>('SOAP_PASSWORD', 'admin'),
     protocol: getConfigValue<'http' | 'https'>('SOAP_PROTOCOL', 'http')
