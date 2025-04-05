@@ -114,30 +114,51 @@ if exist config.cfg (
 )
 echo.
 
-:: Start the application with local PM2
-echo Starting application with PM2...
-call npx pm2 delete wow-client-server >nul 2>&1
-call npx pm2 start ecosystem.config.js
-if %errorLevel% neq 0 (
-    echo Failed to start application with PM2.
-    echo Trying to run directly...
-    node dist/server/server.js
-    pause
-    exit /b 1
-)
-echo Application started successfully with PM2.
-echo.
+:: Ask user if they want to use PM2 or separate command prompts
+echo How would you like to start the application?
+echo 1. Use PM2 (recommended for production)
+echo 2. Start in separate command prompts (better for debugging)
+set /p START_METHOD="Enter your choice (1 or 2): "
 
-:: Save PM2 configuration
-echo Saving PM2 configuration...
-call npx pm2 save
-if %errorLevel% neq 0 (
-    echo Failed to save PM2 configuration.
-    pause
-    exit /b 1
+if "%START_METHOD%"=="1" (
+    :: Start the application with local PM2
+    echo Starting application with PM2...
+    call npx pm2 delete wow-client-server >nul 2>&1
+    call npx pm2 start ecosystem.config.js
+    if %errorLevel% neq 0 (
+        echo Failed to start application with PM2.
+        echo Trying to run directly...
+        node dist/server/server.js
+        pause
+        exit /b 1
+    )
+    echo Application started successfully with PM2.
+    echo.
+
+    :: Save PM2 configuration
+    echo Saving PM2 configuration...
+    call npx pm2 save
+    if %errorLevel% neq 0 (
+        echo Failed to save PM2 configuration.
+        pause
+        exit /b 1
+    )
+    echo PM2 configuration saved.
+    echo.
+) else (
+    :: Start the server in a new command prompt
+    echo Starting server in a new command prompt...
+    start "WoW Account Creation Server" cmd /k "cd /d %PROJECT_DIR% && node dist/server/server.js"
+    
+    :: Start the client in a new command prompt (only for development)
+    echo Starting client in a new command prompt...
+    start "WoW Account Creation Client" cmd /k "cd /d %PROJECT_DIR% && npm run dev"
+    
+    echo.
+    echo Server and client started in separate command prompts.
+    echo You can now see the logs from both processes.
+    echo.
 )
-echo PM2 configuration saved.
-echo.
 
 :: Get server IP address
 for /f "tokens=*" %%a in ('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Ethernet*,Wi-Fi*,vEthernet* | Where-Object {$_.IPAddress -notmatch '127.0.0.1'}).IPAddress"') do set SERVER_IP=%%a
@@ -154,14 +175,20 @@ if defined SERVER_IP (
     echo or http://%SERVER_IP%:3000
 )
 echo.
-echo To manage the application:
-echo - View status: npx pm2 list
-echo - View logs: npx pm2 logs wow-client-server
-echo - Restart: npx pm2 restart wow-client-server
-echo - Stop: npx pm2 stop wow-client-server
-echo.
-echo If you encounter any issues, check the logs with:
-echo npx pm2 logs wow-client-server
+if "%START_METHOD%"=="1" (
+    echo To manage the application:
+    echo - View status: npx pm2 list
+    echo - View logs: npx pm2 logs wow-client-server
+    echo - Restart: npx pm2 restart wow-client-server
+    echo - Stop: npx pm2 stop wow-client-server
+    echo.
+    echo If you encounter any issues, check the logs with:
+    echo npx pm2 logs wow-client-server
+) else (
+    echo To stop the application:
+    echo - Close the command prompt windows
+    echo - Or press Ctrl+C in each command prompt
+)
 echo.
 
 pause
