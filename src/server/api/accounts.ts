@@ -1,6 +1,6 @@
 import express from 'express';
 import mysql from 'mysql2/promise';
-import { getConfigValue } from '../../services/configService.js';
+import { getConfigValue } from '../../services/configService';
 
 const router = express.Router();
 

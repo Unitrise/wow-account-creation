@@ -1,15 +1,11 @@
 import mysql from 'mysql2/promise';
 import { createHash } from 'crypto';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import path from 'path';
 import fs from 'fs';
 
-// Get the directory name of the current module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Load configuration
-const config = loadConfig(resolve(__dirname, '../../../config.cfg'));
+// Load configuration from relative path
+const configPath = path.resolve(process.cwd(), 'config.cfg');
+const config = loadConfig(configPath);
 console.log(config);
 
 // Database connection configuration
@@ -103,9 +99,9 @@ export const createAccount = async (
   options: AccountOptions = {}
 ): Promise<{ success: boolean; message: string }> => {
   const accountTable = options.accountTable || config.DB_TABLE_ACCOUNT || 'account';
-  const defaultStatus = options.defaultStatus !== undefined 
-    ? options.defaultStatus 
-    : parseInt(config.ACCOUNT_DEFAULT_STATUS || '0');
+  // const defaultStatus = options.defaultStatus !== undefined 
+  //   ? options.defaultStatus 
+  //   : parseInt(config.ACCOUNT_DEFAULT_STATUS || '0');
   const defaultExpansion = options.defaultExpansion !== undefined 
     ? options.defaultExpansion 
     : parseInt(config.ACCOUNT_DEFAULT_EXPANSION || '2');

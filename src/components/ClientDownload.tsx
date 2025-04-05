@@ -4,9 +4,7 @@ import {
   Paper, 
   Typography, 
   Button, 
-  Divider, 
-  useTheme,
-  useMediaQuery
+  // useTheme
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { styled } from '@mui/material/styles';
@@ -38,11 +36,11 @@ const StepTitle = styled(Typography)(({ theme }) => ({
   fontSize: 'clamp(1.25rem, 2vw, 1.5rem)',
 }));
 
-const StepDescription = styled(Typography)(({ theme }) => ({
+const StepDescription = styled(Typography)({
   color: '#E8D3A9',
   marginBottom: '2%',
   fontSize: 'clamp(1rem, 1.5vw, 1.125rem)',
-}));
+});
 
 const CodeBox = styled(Box)(({ theme }) => ({
   backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -60,9 +58,9 @@ const CodeText = styled(Typography)(({ theme }) => ({
 
 const ClientDownload: React.FC = () => {
   const { t } = useTranslation();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const serverIP = 'wow-israel.com'; // Replace with your actual server IP
+  // const theme = useTheme();
+  // Server realm from theme
+  const realmAddress = 'set realmlist wow-israel.com';
 
   return (
     <DownloadContainer>
@@ -99,7 +97,7 @@ const ClientDownload: React.FC = () => {
       
       <CodeBox>
         <CodeText>
-          set realmlist wow-israel.com
+          {realmAddress}
         </CodeText>
       </CodeBox>
       

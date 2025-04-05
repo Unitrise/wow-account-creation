@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { createHash, randomBytes } from 'crypto';
-import { getConfigValue } from './configService.js';
+import { getConfigValue } from './services/configService';
 import { BigInteger } from 'jsbn';
 
 // Constants for AzerothCore SRP6 calculation
@@ -9,7 +9,7 @@ const N_HEX = '894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7'
 const g_HEX = '7';
 const N = new BigInteger(N_HEX, 16);
 const g = new BigInteger(g_HEX, 16);
-const k = new BigInteger('3', 10);
+// SRP6 multiplier parameter (not used directly in registration but kept for reference)
 
 // Interfaces
 export interface AccountData {

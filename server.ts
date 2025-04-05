@@ -1,14 +1,9 @@
 import express from 'express';
 import cors from 'cors';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import path from 'path';
 import fs from 'fs';
-import accountsRouter from './src/server/api/accounts.js';
-import { loadConfig, getConfigValue } from './src/services/configService.js';
-
-// Get the directory name of the current module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import accountsRouter from './src/server/api/accounts';
+import { loadConfig, getConfigValue } from './src/services/configService';
 
 // Load configuration
 const config = loadConfig('config.cfg');
@@ -27,14 +22,14 @@ app.use((req, res, next) => {
 });
 
 // Serve static files from the React app
-app.use(express.static(resolve(__dirname, 'dist')));
+app.use(express.static(path.resolve(__dirname, 'dist')));
 
 // API routes
 app.use('/api/account', accountsRouter);
 
 // Catch-all handler for SPA
 app.get('*', (req, res) => {
-  res.sendFile(resolve(__dirname, 'dist', 'index.html'));
+  res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
 });
 
 // Start the server
