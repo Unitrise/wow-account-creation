@@ -182,6 +182,15 @@ export const loginAccount = async (username: string, password: string): Promise<
       
     const response = await axios.post(`${baseUrl}/api/auth/login`, loginData);
     
+    if (response.data.success && response.data.sessionKey) {
+      // Store the session key for future authenticated requests
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('wow_session_key', response.data.sessionKey);
+        localStorage.setItem('wow_username', username.toUpperCase());
+      }
+      console.log('Login successful, session key stored');
+    }
+    
     return response.data.success;
   } catch (error) {
     console.error('Login error:', error);

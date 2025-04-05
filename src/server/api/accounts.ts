@@ -230,8 +230,8 @@ router.post('/create', async (req, res) => {
       // Insert account using AzerothCore's SRP6 format
       await connection.execute(
         `INSERT INTO ${accountTable} 
-         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os) 
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os, session_key) 
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, NULL)`,
         [
           username.toUpperCase(), 
           Buffer.from(salt, 'base64'), // Convert base64 string to binary buffer
@@ -283,11 +283,11 @@ router.post('/create', async (req, res) => {
       const vHex = v.toString(16).padStart(64, '0');
       const verifier = Buffer.from(vHex, 'hex');
       
-      // Insert account using AzerothCore's SRP6 format
+      // Insert account using AzerothCore's SRP6 format (for legacy request conversion)
       await connection.execute(
         `INSERT INTO ${accountTable} 
-         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os) 
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+         (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os, session_key) 
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, NULL)`,
         [
           username.toUpperCase(), 
           salt,
@@ -373,14 +373,20 @@ router.post('/login', async (req, res) => {
       );
       
       if (rows.length > 0) {
-        // Update last login
+        // Generate a new session key (40 bytes)
+        const sessionKey = crypto.randomBytes(40);
+        
+        // Update last login and session key
         await connection.execute(
-          `UPDATE ${accountTable} SET last_login = NOW(), last_ip = ? WHERE id = ?`,
-          [req.ip || '127.0.0.1', rows[0].id]
+          `UPDATE ${accountTable} SET session_key = ?, last_login = NOW(), last_ip = ? WHERE id = ?`,
+          [sessionKey, req.ip || '127.0.0.1', rows[0].id]
         );
         
         console.log('Login successful using legacy authentication');
-        return res.json({ success: true });
+        return res.json({ 
+          success: true,
+          sessionKey: sessionKey.toString('base64') // Return session key to client
+        });
       } else {
         // Update failed logins count
         const [accountRows] = await connection.execute<RowDataPacket[]>(
@@ -462,14 +468,20 @@ router.post('/login', async (req, res) => {
       }
       
       if (isPasswordValid) {
-        // Update last login
+        // Generate a new session key (40 bytes)
+        const sessionKey = crypto.randomBytes(40);
+        
+        // Update last login and session key
         await connection.execute(
-          `UPDATE ${accountTable} SET last_login = NOW(), last_ip = ? WHERE id = ?`,
-          [req.ip || '127.0.0.1', account.id]
+          `UPDATE ${accountTable} SET session_key = ?, last_login = NOW(), last_ip = ? WHERE id = ?`,
+          [sessionKey, req.ip || '127.0.0.1', account.id]
         );
 
         console.log('Login successful using SRP6 authentication');
-        res.json({ success: true });
+        res.json({ 
+          success: true,
+          sessionKey: sessionKey.toString('base64') // Return session key to client
+        });
       } else {
         // Update failed logins count
         await connection.execute(
