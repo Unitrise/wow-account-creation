@@ -4,6 +4,7 @@ import { createAccount, checkAccount } from '../../services/database';
 
 const router = express.Router();
 const config = loadConfig('config.cfg');
+console.log(config);
 
 // Create new account
 router.post('/create', async (req, res) => {

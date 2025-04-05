@@ -16,6 +16,7 @@ app.use(express.json());
 // Logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  console.log('Serving index.html from:', res);
   next();
 });
 
@@ -29,6 +30,7 @@ app.use('/api/accounts', require('./routes/accounts').default);
 
 // Handle React routing, return all requests to React app
 app.get('*', (req, res) => {
+  console.log('Serving index.html from:', req);
   const indexPath = path.resolve(clientPath, 'index.html');
   console.log('Serving index.html from:', indexPath);
   res.sendFile(indexPath);
