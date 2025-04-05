@@ -7,6 +7,7 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
+      cwd: __dirname,
       env: {
         NODE_ENV: 'development'
       },

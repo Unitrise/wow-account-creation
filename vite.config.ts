@@ -8,6 +8,12 @@ export default defineConfig({
     // Polyfill global to avoid crypto errors
     global: {},
   },
+  build: {
+    // Specify the output directory relative to project root
+    outDir: 'dist/client',
+    // Empty the output directory before building
+    emptyOutDir: true,
+  },
   resolve: {
     alias: {
       // Handle Node.js modules for browser
