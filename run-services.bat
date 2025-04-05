@@ -30,6 +30,54 @@ if not exist package.json (
     exit /b 1
 )
 
+:: Check config.cfg exists
+if not exist config.cfg (
+    echo WARNING: config.cfg file not found!
+    echo Creating a basic config file...
+    
+    echo # WoW Israel Server Configuration > config.cfg
+    echo SERVER_NAME = WoW Israel >> config.cfg
+    echo SERVER_REALM = WoW-Israel >> config.cfg
+    echo SERVER_EXPANSION = 2 >> config.cfg
+    echo DB_HOST = localhost >> config.cfg
+    echo DB_PORT = 3306 >> config.cfg
+    echo DB_USER = acore >> config.cfg
+    echo DB_PASSWORD = password >> config.cfg
+    echo DB_NAME = acore_auth >> config.cfg
+    echo PORT = 3000 >> config.cfg
+    echo FEATURE_ACCOUNT_CREATION = true >> config.cfg
+    
+    echo Basic config.cfg created. Please edit with your correct database details.
+    echo.
+)
+
+:: Copy config.cfg to dist folder
+echo Copying config.cfg to dist folder...
+if exist config.cfg (
+    copy config.cfg dist\config.cfg >nul
+    if %errorLevel% neq 0 (
+        echo Failed to copy config.cfg to dist folder.
+    ) else (
+        echo Config file copied to dist folder.
+        
+        :: Display database configuration
+        echo.
+        echo Database Configuration:
+        echo ---------------------
+        for /f "tokens=1,2 delims==" %%a in (config.cfg) do (
+            if "%%a"=="DB_HOST" echo Host: %%b
+            if "%%a"=="DB_PORT" echo Port: %%b
+            if "%%a"=="DB_USER" echo User: %%b
+            if "%%a"=="DB_NAME" echo Database: %%b
+        )
+        echo ---------------------
+        echo.
+    )
+) else (
+    echo WARNING: config.cfg not found, cannot copy to dist folder.
+)
+echo.
+
 :: Check for and kill any existing processes using port 3000
 echo Checking for existing processes using port 3000...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000') do (

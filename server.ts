@@ -3,10 +3,14 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import accountsRouter from './src/server/api/accounts';
-import { loadConfig, getConfigValue } from './src/services/configService';
+import { loadConfig, getConfigValue, clearConfigCache } from './src/services/configService';
+
+// Clear any cached config to ensure we load fresh values
+clearConfigCache();
 
 // Load configuration
 const config = loadConfig('config.cfg');
+console.log('Server configuration loaded:', config);
 
 const app = express();
 const PORT = getConfigValue<number>('PORT', 3000);
@@ -62,47 +66,28 @@ function startServer(clientPath: string) {
   });
 }
 
-// Determine the correct path to the client files
-// In production, the client files are in dist/client
-// In development, they might be in a different location
-const clientPath = path.join(__dirname, 'client');
+// Try to find the client directory
+const possibleClientPaths = [
+  path.join(process.cwd(), 'dist', 'client'),
+  path.join(process.cwd(), 'dist'),
+  path.join(process.cwd(), 'public'),
+];
 
-console.log(`Looking for client files in: ${clientPath}`);
+let clientPath = '';
 
-// Check if the directory exists
-if (!fs.existsSync(clientPath)) {
-  console.error(`Directory not found: ${clientPath}`);
-  
-  // Log available directories for debugging
-  try {
-    console.log('Available directories in dist:', fs.readdirSync(path.join(__dirname)));
-  } catch (err) {
-    console.error('Error reading dist directory:', err);
+for (const p of possibleClientPaths) {
+  if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) {
+    clientPath = p;
+    break;
   }
-  
-  // Try alternative paths
-  const alternativePaths = [
-    path.join(__dirname, '..', 'client'),
-    path.join(__dirname, '..', 'dist', 'client'),
-    path.join(__dirname, 'dist', 'client')
-  ];
-  
-  let foundPath = false;
-  
-  for (const altPath of alternativePaths) {
-    console.log(`Trying alternative path: ${altPath}`);
-    if (fs.existsSync(altPath)) {
-      console.log(`Found alternative path: ${altPath}`);
-      foundPath = true;
-      startServer(altPath);
-      break;
-    }
-  }
-  
-  if (!foundPath) {
-    console.error('Could not find client directory in any of the expected locations');
-    process.exit(1);
-  }
-} else {
-  startServer(clientPath);
-} 
+}
+
+if (!clientPath) {
+  console.error('Could not find client directory with index.html');
+  console.log('Tried the following paths:');
+  possibleClientPaths.forEach(p => console.log(`- ${p}`));
+  process.exit(1);
+}
+
+// Start the server with the found client path
+startServer(clientPath); 

@@ -1,19 +1,27 @@
 import express from 'express';
 import mysql from 'mysql2/promise';
-import { getConfigValue } from '../../services/configService';
+import { getConfigValue, clearConfigCache } from '../../services/configService';
 
 const router = express.Router();
+
+// Clear any cached config to ensure we load fresh values
+clearConfigCache();
 
 /**
  * Get database configuration from config.cfg
  */
-const getDbConfig = () => ({
-  host: getConfigValue<string>('DB_HOST', 'localhost'),
-  port: getConfigValue<number>('DB_PORT', 3306),
-  user: getConfigValue<string>('DB_USER', 'acore'),
-  password: getConfigValue<string>('DB_PASSWORD', 'password'),
-  database: getConfigValue<string>('DB_NAME', 'acore_auth'),
-});
+const getDbConfig = () => {
+  console.log('Loading database configuration from config file');
+  const config = {
+    host: getConfigValue<string>('DB_HOST', 'localhost'),
+    port: getConfigValue<number>('DB_PORT', 3306),
+    user: getConfigValue<string>('DB_USER', 'acore'),
+    password: getConfigValue<string>('DB_PASSWORD', 'password'),
+    database: getConfigValue<string>('DB_NAME', 'acore_auth'),
+  };
+  console.log(`Database config: ${config.host}:${config.port}/${config.database} (user: ${config.user})`);
+  return config;
+};
 
 /**
  * Create a connection pool
@@ -53,6 +61,7 @@ router.get('/check', async (req, res) => {
     
     try {
       const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+      console.log(`Checking username in table: ${accountTable}`);
       
       const [rows] = await connection.execute(
         `SELECT id FROM ${accountTable} WHERE username = ?`,
@@ -78,80 +87,67 @@ router.get('/check', async (req, res) => {
 });
 
 /**
- * Create a new account using SRP6
+ * Create a new account
  * @route POST /api/account/create
  */
 router.post('/create', async (req, res) => {
+  const { username, email, password, salt, verifier, expansion, language } = req.body;
+  
+  // Validate required fields
+  if (!username || !email || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username, email, and password are required',
+    });
+  }
+  
   try {
-    // Check if account creation is enabled
-    if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Account creation is currently disabled',
-      });
-    }
-    
-    const { username, email, salt, verifier, expansion, language } = req.body;
-    
-    // Validate required fields
-    if (!username || !email || !salt || !verifier) {
-      return res.status(400).json({
-        success: false,
-        message: 'Required fields are missing',
-      });
-    }
-    
     const connection = await getPool().getConnection();
     
     try {
       const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+      console.log(`Creating account in table: ${accountTable}`);
       
       // Check if username already exists
-      const [existingRows] = await connection.execute(
+      const [existingUsers] = await connection.execute(
         `SELECT id FROM ${accountTable} WHERE username = ?`,
         [username]
       );
       
-      if (Array.isArray(existingRows) && existingRows.length > 0) {
-        return res.status(409).json({
+      if (Array.isArray(existingUsers) && existingUsers.length > 0) {
+        return res.status(400).json({
           success: false,
           message: 'Username already exists',
         });
       }
       
-      // Convert from base64 to Buffer
-      const saltBuffer = Buffer.from(salt, 'base64');
-      const verifierBuffer = Buffer.from(verifier, 'base64');
-      
-      // Default expansion if not provided
+      // Get default expansion from config
       const defaultExpansion = getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2);
-      const accountExpansion = expansion || defaultExpansion;
+      const accountExpansion = expansion !== undefined ? expansion : defaultExpansion;
       
-      // Default locale
-      const defaultLocale = language === 'en' ? 0 : (language === 'he' ? 10 : 0);
-      
-      // Insert new account with SRP6 auth
+      // Insert the new account
       const [result] = await connection.execute(
-        `INSERT INTO ${accountTable} (username, salt, verifier, email, reg_mail, joindate, expansion, locale) 
-         VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
-        [username, saltBuffer, verifierBuffer, email, email, accountExpansion, defaultLocale]
+        `INSERT INTO ${accountTable} (username, sha_pass_hash, email, reg_mail, joindate, expansion, locale) 
+         VALUES (?, ?, ?, ?, NOW(), ?, ?)`,
+        [username, password, email, email, accountExpansion, language || 'en']
       );
       
-      const insertResult = result as { insertId: number };
+      // Get the account ID
+      const accountId = (result as any).insertId;
       
-      return res.status(201).json({
+      res.json({
         success: true,
         message: 'Account created successfully',
-        accountId: insertResult.insertId,
+        accountId,
       });
     } finally {
       connection.release();
     }
   } catch (error) {
-    console.error('Error creating account:', error);
-    return res.status(500).json({
+    console.error('Database error creating account:', error);
+    res.status(500).json({
       success: false,
-      message: 'Server error during account creation',
+      message: 'Server error while creating account',
     });
   }
 });

@@ -1,36 +1,30 @@
 import mysql from 'mysql2/promise';
 import { createHash } from 'crypto';
-import path from 'path';
-import fs from 'fs';
-
-// Load configuration from relative path
-const configPath = path.resolve(process.cwd(), 'config.cfg');
-const config = loadConfig(configPath);
-console.log(config);
+import { getConfigValue } from './configService';
 
 // Database connection configuration
 const dbConfig = {
-  host: config.DB_HOST || process.env.DB_HOST || 'localhost',
-  port: parseInt(config.DB_PORT || process.env.DB_PORT || '3306'),
-  user: config.DB_USER || process.env.DB_USER || 'acore',
-  password: config.DB_PASSWORD || process.env.DB_PASSWORD || 'password',
-  database: config.DB_NAME || process.env.DB_NAME || 'acore_auth',
+  host: getConfigValue<string>('DB_HOST', 'localhost'),
+  port: getConfigValue<number>('DB_PORT', 3306),
+  user: getConfigValue<string>('DB_USER', 'acore'),
+  password: getConfigValue<string>('DB_PASSWORD', 'password'),
+  database: getConfigValue<string>('DB_NAME', 'acore_auth'),
 };
 
 // Create a connection pool
 const pool = mysql.createPool(dbConfig);
 
 // Character database connection (if separate)
-if (config.USE_CHARS_DB === 'true') {
+if (getConfigValue<string>('USE_CHARS_DB', 'false') === 'true') {
   const charDbConfig = {
-    host: config.DB_CHARS_HOST || process.env.DB_CHARS_HOST || 'localhost',
-    port: parseInt(config.DB_CHARS_PORT || process.env.DB_CHARS_PORT || '3306'),
-    user: config.DB_CHARS_USER || process.env.DB_CHARS_USER || 'acore',
-    password: config.DB_CHARS_PASSWORD || process.env.DB_CHARS_PASSWORD || 'password',
-    database: config.DB_CHARS_DATABASE || process.env.DB_CHARS_DATABASE || 'acore_characters',
+    host: getConfigValue<string>('DB_CHARS_HOST', 'localhost'),
+    port: getConfigValue<number>('DB_CHARS_PORT', 3306),
+    user: getConfigValue<string>('DB_CHARS_USER', 'acore'),
+    password: getConfigValue<string>('DB_CHARS_PASSWORD', 'password'),
+    database: getConfigValue<string>('DB_CHARS_DATABASE', 'acore_characters'),
   };
   // Character pool creation commented out until needed
-   mysql.createPool(charDbConfig);
+  // mysql.createPool(charDbConfig);
 }
 
 // Password hashing methods
@@ -72,7 +66,7 @@ export const hashPassword = (
     username?: string;
   } = {}
 ): string => {
-  const hashType = options.hashType || config.PASSWORD_HASH_TYPE || 'sha1';
+  const hashType = options.hashType || getConfigValue<string>('PASSWORD_HASH_TYPE', 'sha1');
   const hashMethod = hashMethods[hashType as keyof typeof hashMethods] || hashMethods.sha1;
   
   return hashMethod(password, options);
@@ -98,11 +92,11 @@ export const createAccount = async (
   password: string,
   options: AccountOptions = {}
 ): Promise<{ success: boolean; message: string }> => {
-  const accountTable = options.accountTable || config.DB_TABLE_ACCOUNT || 'account';
+  const accountTable = options.accountTable || getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
   // Status is set by the database default value
   const defaultExpansion = options.defaultExpansion !== undefined 
     ? options.defaultExpansion 
-    : parseInt(config.ACCOUNT_DEFAULT_EXPANSION || '2');
+    : getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2);
   
   try {
     // Get a connection from the pool
@@ -121,11 +115,11 @@ export const createAccount = async (
       
       // Hash the password with configured options
       const hashedPassword = hashPassword(password, {
-        hashType: options.hashType || config.PASSWORD_HASH_TYPE,
+        hashType: options.hashType || getConfigValue<string>('PASSWORD_HASH_TYPE', 'sha1'),
         uppercase: options.uppercase !== undefined 
           ? options.uppercase 
-          : config.PASSWORD_UPPERCASE === 'true',
-        salt: options.salt || config.PASSWORD_SALT,
+          : getConfigValue<string>('PASSWORD_UPPERCASE', 'true') === 'true',
+        salt: options.salt || getConfigValue<string>('PASSWORD_SALT', ''),
         username
       });
       
@@ -156,7 +150,7 @@ export const verifyAccount = async (
   password: string,
   options: AccountOptions = {}
 ): Promise<{ success: boolean; message: string }> => {
-  const accountTable = options.accountTable || config.DB_TABLE_ACCOUNT || 'account';
+  const accountTable = options.accountTable || getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
   
   try {
     const connection = await pool.getConnection();
@@ -164,11 +158,11 @@ export const verifyAccount = async (
     try {
       // Hash the password with the same method used for account creation
       const hashedPassword = hashPassword(password, {
-        hashType: options.hashType || config.PASSWORD_HASH_TYPE,
+        hashType: options.hashType || getConfigValue<string>('PASSWORD_HASH_TYPE', 'sha1'),
         uppercase: options.uppercase !== undefined 
           ? options.uppercase 
-          : config.PASSWORD_UPPERCASE === 'true',
-        salt: options.salt || config.PASSWORD_SALT,
+          : getConfigValue<string>('PASSWORD_UPPERCASE', 'true') === 'true',
+        salt: options.salt || getConfigValue<string>('PASSWORD_SALT', ''),
         username
       });
       
@@ -193,43 +187,6 @@ export const verifyAccount = async (
     };
   }
 };
-
-/**
- * Load configuration from a file
- * @param filePath Path to the config file
- * @returns Configuration object
- */
-function loadConfig(filePath: string): Record<string, string> {
-  const config: Record<string, string> = {};
-  
-  try {
-    // Read the config file
-    const configData = fs.readFileSync(filePath, 'utf8');
-    
-    // Parse the config file line by line
-    const lines = configData.split('\n');
-    
-    for (const line of lines) {
-      // Skip comments and empty lines
-      if (line.trim().startsWith('#') || !line.trim()) {
-        continue;
-      }
-      
-      // Extract key-value pairs
-      const match = line.match(/^([^=]+)=(.*)$/);
-      if (match) {
-        const key = match[1].trim();
-        const value = match[2].trim();
-        config[key] = value;
-      }
-    }
-  } catch (error) {
-    console.error('Error loading configuration:', error);
-    console.warn('Falling back to environment variables');
-  }
-  
-  return config;
-}
 
 export default {
   createAccount,

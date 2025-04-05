@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ======================================================
-echo WoW Account Creation - Setup and Deployment
+echo WoW Account Creation - Setup and Run
 echo ======================================================
 echo.
 
@@ -30,24 +30,7 @@ if not exist package.json (
     exit /b 1
 )
 
-:: Check for and kill any existing processes using port 3000
-echo Checking for existing processes using port 3000...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000') do (
-    echo Found process using port 3000 with PID: %%a
-    echo Attempting to terminate process...
-    taskkill /F /PID %%a
-    if %errorLevel% neq 0 (
-        echo Failed to terminate process. Please manually close any applications using port 3000.
-        echo You can use Task Manager to find and end processes using port 3000.
-        pause
-        exit /b 1
-    ) else (
-        echo Process terminated successfully.
-    )
-)
-echo.
-
-:: Install dependencies (including PM2 locally)
+:: Install dependencies
 echo Installing dependencies...
 call npm install
 if %errorLevel% neq 0 (
@@ -58,9 +41,9 @@ if %errorLevel% neq 0 (
 echo Dependencies installed successfully.
 echo.
 
-:: Build client
+:: Build the client
 echo Building client...
-call npm run build
+call npm run build:client
 if %errorLevel% neq 0 (
     echo Failed to build client.
     pause
@@ -69,9 +52,9 @@ if %errorLevel% neq 0 (
 echo Client built successfully.
 echo.
 
-:: Build server
+:: Build the server
 echo Building server...
-call npm run server:build
+call npm run build:server
 if %errorLevel% neq 0 (
     echo Failed to build server.
     pause
@@ -125,9 +108,39 @@ if exist config.cfg (
         echo Failed to copy config.cfg to dist folder.
     ) else (
         echo Config file copied to dist folder.
+        
+        :: Display database configuration
+        echo.
+        echo Database Configuration:
+        echo ---------------------
+        for /f "tokens=1,2 delims==" %%a in (config.cfg) do (
+            if "%%a"=="DB_HOST" echo Host: %%b
+            if "%%a"=="DB_PORT" echo Port: %%b
+            if "%%a"=="DB_USER" echo User: %%b
+            if "%%a"=="DB_NAME" echo Database: %%b
+        )
+        echo ---------------------
+        echo.
     )
 ) else (
     echo WARNING: config.cfg not found, cannot copy to dist folder.
+)
+echo.
+
+:: Check for and kill any existing processes using port 3000
+echo Checking for existing processes using port 3000...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000') do (
+    echo Found process using port 3000 with PID: %%a
+    echo Attempting to terminate process...
+    taskkill /F /PID %%a
+    if %errorLevel% neq 0 (
+        echo Failed to terminate process. Please manually close any applications using port 3000.
+        echo You can use Task Manager to find and end processes using port 3000.
+        pause
+        exit /b 1
+    ) else (
+        echo Process terminated successfully.
+    )
 )
 echo.
 
@@ -165,11 +178,14 @@ if "%START_METHOD%"=="1" (
 ) else (
     :: Start the server in a new command prompt
     echo Starting server in a new command prompt...
-    start "WoW Account Creation Server" cmd /k "cd /d %PROJECT_DIR% && node dist/server/server.js"
+    start "WoW Account Creation Server" cmd /k "cd /d %PROJECT_DIR% && echo Starting server... && node dist/server/server.js"
+    
+    :: Wait a moment to ensure the server starts first
+    timeout /t 2 /nobreak > nul
     
     :: Start the client in a new command prompt (only for development)
     echo Starting client in a new command prompt...
-    start "WoW Account Creation Client" cmd /k "cd /d %PROJECT_DIR% && npm run dev"
+    start "WoW Account Creation Client" cmd /k "cd /d %PROJECT_DIR% && echo Starting client... && npm run dev"
     
     echo.
     echo Server and client started in separate command prompts.
@@ -181,7 +197,7 @@ if "%START_METHOD%"=="1" (
 for /f "tokens=*" %%a in ('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Ethernet*,Wi-Fi*,vEthernet* | Where-Object {$_.IPAddress -notmatch '127.0.0.1'}).IPAddress"') do set SERVER_IP=%%a
 
 echo ======================================================
-echo Setup Complete!
+echo Services Started!
 echo ======================================================
 echo.
 echo Your WoW Account Creation service is now running.
