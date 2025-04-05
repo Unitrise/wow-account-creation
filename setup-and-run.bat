@@ -63,7 +63,7 @@ if %errorLevel% neq 0 (
 echo Server built successfully.
 echo.
 
-:: Install PM2 globally
+:: Install PM2 globally with proper error handling
 echo Installing PM2 globally...
 call npm install -g pm2
 if %errorLevel% neq 0 (
@@ -74,24 +74,34 @@ if %errorLevel% neq 0 (
 echo PM2 installed successfully.
 echo.
 
-:: Add npm global bin to PATH if not already there
+:: Get npm global installation path
 for /f "tokens=*" %%i in ('npm config get prefix') do set NPM_PREFIX=%%i
 set NPM_BIN=%NPM_PREFIX%\node_modules\npm\bin
-set PATH_TO_ADD=%NPM_PREFIX%;%NPM_BIN%
+set PM2_PATH=%NPM_PREFIX%\node_modules\pm2\bin\pm2.cmd
 
+:: Add npm global bin to PATH if not already there
 echo Adding PM2 to PATH...
-setx PATH "%PATH%;%PATH_TO_ADD%" /M
+set "PATH=%PATH%;%NPM_PREFIX%;%NPM_BIN%"
+setx PATH "%PATH%" /M
 echo PATH updated.
 echo.
 
-:: Configure Windows Firewall
+:: Configure Windows Firewall with proper error handling
 echo Configuring Windows Firewall...
 netsh advfirewall firewall show rule name="WoW Client" >nul 2>&1
 if %errorLevel% neq 0 (
+    echo Creating new firewall rule...
     netsh advfirewall firewall add rule name="WoW Client" dir=in action=allow protocol=TCP localport=3000
     if %errorLevel% neq 0 (
         echo Failed to configure Windows Firewall.
         echo Please manually open port 3000 in your firewall settings.
+        echo You can do this by:
+        echo 1. Opening Windows Defender Firewall with Advanced Security
+        echo 2. Right-clicking on "Inbound Rules" and selecting "New Rule"
+        echo 3. Select "Port" and click Next
+        echo 4. Enter "3000" as the port and click Next
+        echo 5. Select "Allow the connection" and click Next
+        echo 6. Name the rule "WoW Client" and click Finish
     ) else (
         echo Windows Firewall configured successfully.
     )
@@ -121,23 +131,31 @@ if not exist config.cfg (
     echo.
 )
 
-:: Start the application with PM2
+:: Start the application with PM2 using full path
 echo Starting application with PM2...
-call pm2 delete wow-client >nul 2>&1
-call pm2 start dist/server/server.js --name wow-client
-if %errorLevel% neq 0 (
-    echo Failed to start application with PM2.
+if exist "%PM2_PATH%" (
+    call "%PM2_PATH%" delete wow-client >nul 2>&1
+    call "%PM2_PATH%" start dist/server/server.js --name wow-client
+    if %errorLevel% neq 0 (
+        echo Failed to start application with PM2.
+        echo Trying to run directly...
+        node dist/server/server.js
+        pause
+        exit /b 1
+    )
+    echo Application started successfully with PM2.
+) else (
+    echo PM2 executable not found at: %PM2_PATH%
     echo Trying to run directly...
     node dist/server/server.js
     pause
     exit /b 1
 )
-echo Application started successfully with PM2.
 echo.
 
 :: Save PM2 configuration
 echo Saving PM2 configuration...
-call pm2 save
+call "%PM2_PATH%" save
 if %errorLevel% neq 0 (
     echo Failed to save PM2 configuration.
     pause
