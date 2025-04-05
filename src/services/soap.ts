@@ -1,5 +1,9 @@
 import axios from 'axios';
 import { getConfigValue } from './configService.js';
+import { parseString } from 'xml2js';
+import { promisify } from 'util';
+
+const parseXmlString = promisify(parseString);
 
 /**
  * Interface for SOAP connection options
@@ -46,7 +50,7 @@ export const executeSoapCommand = async (
   // Build SOAP URL with authentication in the URL as recommended by AzerothCore
   const url = `${protocol}://${username}:${password}@${host}:${port}/`;
   
-  // Build SOAP envelope - Keep the namespace as urn:AC for AzerothCore
+  // Build SOAP envelope exactly as shown in AzerothCore documentation
   const soapEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
 <SOAP-ENV:Envelope
   xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
@@ -62,43 +66,52 @@ export const executeSoapCommand = async (
 </SOAP-ENV:Envelope>`;
 
   try {
-    // Send SOAP request - use URL-based authentication instead of header
+    // Send SOAP request with URL-based authentication
     const response = await axios.post(url, soapEnvelope, {
       headers: {
         'Content-Type': 'application/xml'
       },
-      timeout: 10000 // 10 seconds timeout
+      timeout: 10000, // 10 seconds timeout
+      auth: {
+        username,
+        password
+      }
     });
     
-    // Parse XML response
+    // Parse XML response using xml2js
     const responseText = response.data;
     
     if (typeof responseText !== 'string') {
       throw new Error('Invalid SOAP response: not a string');
     }
+
+    // Parse the XML to a JavaScript object
+    const xml = await parseXmlString(responseText) as any;
     
-    // Extract result from XML
-    // This is a simple approach - in production you'd want a proper XML parser
-    let result = responseText;
-    
-    // Different WoW emulators have different response formats
-    // Try to handle the most common ones - Fixed the typo in the first pattern
-    const resultPatterns = [
-      /<result>([\s\S]*?)<\/result>/,
-      /<ns1:executeCommandResponse>([\s\S]*?)<\/ns1:executeCommandResponse>/,
-      /<executeCommandResponse>([\s\S]*?)<\/executeCommandResponse>/,
-      /<return>([\s\S]*?)<\/return>/
-    ];
-    
-    for (const pattern of resultPatterns) {
-      const match = pattern.exec(responseText);
-      if (match && match[1]) {
-        result = match[1].trim();
-        break;
-      }
+    if (!xml) {
+      throw new Error('Failed to parse XML response');
     }
     
-    return result;
+    // Extract response data using the path shown in the example
+    const body = xml["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0];
+    
+    // Check for fault first
+    const fault = body["SOAP-ENV:Fault"];
+    if (fault) {
+      const faultCode = fault[0]["faultcode"][0];
+      const faultString = fault[0]["faultstring"][0];
+      throw new Error(`SOAP Fault: ${faultCode} - ${faultString}`);
+    }
+    
+    // Check for successful response
+    const responseNode = body["ns1:executeCommandResponse"];
+    if (responseNode && responseNode[0]["result"]) {
+      return responseNode[0]["result"][0];
+    }
+    
+    // If we can't find the expected structure, return the raw XML
+    console.warn('Unable to extract result from SOAP response, returning raw XML');
+    return responseText;
   } catch (error: any) {
     console.error('SOAP request failed:', error);
     
