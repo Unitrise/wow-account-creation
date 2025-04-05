@@ -91,13 +91,13 @@ router.get('/check', async (req, res) => {
  * @route POST /api/account/create
  */
 router.post('/create', async (req, res) => {
-  const { username, email, password, expansion, language } = req.body;
+  const { username, email, salt, verifier, expansion, language } = req.body;
   
   // Validate required fields
-  if (!username || !email || !password) {
+  if (!username || !email || !salt || !verifier) {
     return res.status(400).json({
       success: false,
-      message: 'Username, email, and password are required',
+      message: 'Username, email, salt, and verifier are required',
     });
   }
   
@@ -125,11 +125,19 @@ router.post('/create', async (req, res) => {
       const defaultExpansion = getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2);
       const accountExpansion = expansion !== undefined ? expansion : defaultExpansion;
       
-      // Insert the new account
+      // Insert the new account with SRP6 data
       const [result] = await connection.execute(
-        `INSERT INTO ${accountTable} (username, sha_pass_hash, email, reg_mail, joindate, expansion, locale) 
-         VALUES (?, ?, ?, ?, NOW(), ?, ?)`,
-        [username, password, email, email, accountExpansion, language || 'en']
+        `INSERT INTO ${accountTable} (username, salt, verifier, email, reg_mail, joindate, expansion, locale) 
+         VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
+        [
+          username,
+          Buffer.from(salt, 'base64'),  // Convert base64 salt to binary
+          Buffer.from(verifier, 'base64'),  // Convert base64 verifier to binary
+          email,
+          email,
+          accountExpansion,
+          language || 'en'
+        ]
       );
       
       // Get the account ID
