@@ -15,8 +15,8 @@ const getDbConfig = () => {
   const config = {
     host: getConfigValue<string>('DB_HOST', 'localhost'),
     port: getConfigValue<number>('DB_PORT', 3306),
-    user: getConfigValue<string>('DB_USER', 'acore'),
-    password: getConfigValue<string>('DB_PASSWORD', 'password'),
+    user: getConfigValue<string>('DB_USER', 'root'),
+    password: getConfigValue<string>('DB_PASSWORD', 'root'),
     database: getConfigValue<string>('DB_NAME', 'acore_auth'),
   };
   console.log(`Database config: ${config.host}:${config.port}/${config.database} (user: ${config.user})`);
@@ -91,7 +91,7 @@ router.get('/check', async (req, res) => {
  * @route POST /api/account/create
  */
 router.post('/create', async (req, res) => {
-  const { username, email, password, salt, verifier, expansion, language } = req.body;
+  const { username, email, password, expansion, language } = req.body;
   
   // Validate required fields
   if (!username || !email || !password) {
