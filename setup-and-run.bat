@@ -134,6 +134,37 @@ echo   ]
 echo }
 ) > ecosystem.config.js
 
+:: Create a temporary JavaScript file to properly format the JSON
+echo Creating properly formatted ecosystem config...
+(
+echo const fs = require('fs');
+echo const config = {
+echo   apps: [
+echo     {
+echo       name: 'wow-client',
+echo       script: 'node_modules/.bin/vite',
+echo       cwd: '%PROJECT_DIR%',
+echo       env: {
+echo         NODE_ENV: 'production'
+echo       }
+echo     },
+echo     {
+echo       name: 'wow-server',
+echo       script: 'dist/server/server.js',
+echo       cwd: '%PROJECT_DIR%',
+echo       env: {
+echo         NODE_ENV: 'production'
+echo       }
+echo     }
+echo   ]
+echo };
+echo fs.writeFileSync('ecosystem.config.js', JSON.stringify(config, null, 2));
+) > create-ecosystem.js
+
+:: Run the JavaScript file to create the properly formatted config
+node create-ecosystem.js
+del create-ecosystem.js
+
 :: Start the client and server in separate windows
 echo Starting client and server...
 start "WoW Client" cmd /k "cd /d %PROJECT_DIR% && node_modules\.bin\pm2 start ecosystem.config.js --only wow-client"
