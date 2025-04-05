@@ -87,6 +87,29 @@ router.get('/check', async (req, res) => {
 });
 
 /**
+ * Convert language code to AzerothCore locale ID
+ */
+const getLocaleId = (language: string = 'en'): number => {
+  const localeMap: { [key: string]: number } = {
+    'en': 0,  // English
+    'ko': 1,  // Korean
+    'fr': 2,  // French
+    'de': 3,  // German
+    'zh': 4,  // Chinese
+    'tw': 5,  // Taiwanese
+    'es': 6,  // Spanish (Spain)
+    'mx': 7,  // Spanish (Mexico)
+    'ru': 8   // Russian
+  };
+  
+  // Get the base language code (first 2 characters)
+  const baseLanguage = language.toLowerCase().slice(0, 2);
+  
+  // Return the locale ID or default to English (0)
+  return localeMap[baseLanguage] || 0;
+};
+
+/**
  * Create a new account
  * @route POST /api/account/create
  */
@@ -125,10 +148,21 @@ router.post('/create', async (req, res) => {
       const defaultExpansion = getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2);
       const accountExpansion = expansion !== undefined ? expansion : defaultExpansion;
       
+      // Convert language to locale ID
+      const localeId = getLocaleId(language);
+      
       // Insert the new account with SRP6 data
       const [result] = await connection.execute(
-        `INSERT INTO ${accountTable} (username, salt, verifier, email, reg_mail, joindate, expansion, locale) 
-         VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
+        `INSERT INTO ${accountTable} (
+          username, 
+          salt, 
+          verifier, 
+          email, 
+          reg_mail, 
+          joindate, 
+          expansion, 
+          locale
+        ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
         [
           username,
           Buffer.from(salt, 'base64'),  // Convert base64 salt to binary
@@ -136,7 +170,7 @@ router.post('/create', async (req, res) => {
           email,
           email,
           accountExpansion,
-          language || 'en'
+          localeId
         ]
       );
       
@@ -156,6 +190,7 @@ router.post('/create', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while creating account',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
