@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { BigInteger } from 'jsbn';
 import crypto from 'crypto';
-import { pool } from '../database';
+import { pool } from '../../services/database';
 import SHA1 from 'crypto-js/sha1';
 import Hex from 'crypto-js/enc-hex';
 import { RowDataPacket } from 'mysql2';

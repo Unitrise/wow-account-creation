@@ -1,8 +1,11 @@
-import express from 'express';
+// import express from 'express';
 import mysql from 'mysql2/promise';
 import { getConfigValue, clearConfigCache } from '../../services/configService';
+import { Router } from 'express';
+// import { pool } from '../../services/database';
+import { RowDataPacket } from 'mysql2';
 
-const router = express.Router();
+const router = Router();
 
 // Clear any cached config to ensure we load fresh values
 clearConfigCache();
@@ -51,21 +54,21 @@ const createPool = () => {
 /**
  * Get the pool with connection check
  */
-let pool: mysql.Pool | null = null;
+let dbPool: mysql.Pool | null = null;
 const getPool = async () => {
-  if (!pool) {
-    pool = createPool();
+  if (!dbPool) {
+    dbPool = createPool();
   }
   
   try {
     // Test if pool is still working
-    const connection = await pool.getConnection();
+    const connection = await dbPool.getConnection();
     connection.release();
-    return pool;
+    return dbPool;
   } catch (error) {
     console.error('Pool connection failed, creating new pool:', error);
-    pool = createPool();
-    return pool;
+    dbPool = createPool();
+    return dbPool;
   }
 };
 
@@ -146,114 +149,71 @@ const getLocaleId = (language: string = 'en'): number => {
  * @route POST /api/account/create
  */
 router.post('/create', async (req, res) => {
-  console.log('Received account creation request');
-  const { username, email, salt, verifier, expansion, language } = req.body;
-  
-  // Log the received data (excluding sensitive info)
-  console.log('Account creation data:', {
-    username,
-    email,
-    expansion,
-    language,
-    hasSalt: !!salt,
-    hasVerifier: !!verifier
-  });
-  
-  // Validate required fields
-  if (!username || !email || !salt || !verifier) {
-    console.error('Missing required fields:', {
-      hasUsername: !!username,
-      hasEmail: !!email,
-      hasSalt: !!salt,
-      hasVerifier: !!verifier
-    });
-    return res.status(400).json({
-      success: false,
-      message: 'Username, email, salt, and verifier are required',
-    });
+  const { username, sha_pass_hash, email, expansion = 2 } = req.body;
+  if (!dbPool) {
+    throw new Error('Database pool is not initialized');
   }
-  
-  let connection;
   try {
-    console.log('Getting database connection...');
-    const currentPool = await getPool();
-    connection = await currentPool.getConnection();
-    console.log('Database connection acquired');
-    
-    const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
-    console.log(`Creating account in table: ${accountTable}`);
-    
-    // Check if username already exists
-    console.log('Checking for existing username...');
-    const [existingUsers] = await connection.execute(
-      `SELECT id FROM ${accountTable} WHERE username = ?`,
-      [username]
+    // Insert account using WoW's standard format
+    const [result] = await dbPool.query(
+      `INSERT INTO account 
+       (username, sha_pass_hash, email, reg_mail, expansion, joindate) 
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [username, sha_pass_hash, email, email, expansion]
     );
-    
-    if (Array.isArray(existingUsers) && existingUsers.length > 0) {
-      console.log('Username already exists');
-      return res.status(400).json({
-        success: false,
-        message: 'Username already exists',
-      });
-    }
-    
-    // Get default expansion from config
-    const defaultExpansion = getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2);
-    const accountExpansion = expansion !== undefined ? expansion : defaultExpansion;
-    
-    // Convert language to locale ID
-    const localeId = getLocaleId(language);
-    
-    console.log('Inserting new account...');
-    // Insert the new account with SRP6 data
-    const [result] = await connection.execute(
-      `INSERT INTO ${accountTable} (
-        username,
-        salt,
-        verifier,
-        email,
-        reg_mail,
-        joindate,
-        last_ip,
-        expansion,
-        locale,
-        os
-      ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)`,
-      [
-        username,
-        Buffer.from(salt, 'base64'),  // Convert base64 salt to binary
-        Buffer.from(verifier, 'base64'),  // Convert base64 verifier to binary
-        email,
-        email,
-        '127.0.0.1',  // default last_ip
-        accountExpansion,
-        localeId,
-        ''  // default os
-      ]
-    );
-    
-    // Get the account ID
-    const accountId = (result as any).insertId;
-    console.log('Account created successfully:', { accountId });
-    
+
     res.json({
       success: true,
-      message: 'Account created successfully',
-      accountId,
+      message: 'Account created successfully'
     });
-  } catch (error) {
-    console.error('Database error creating account:', error);
-    res.status(500).json({
+
+  } catch (error: any) {
+    console.error('Account creation error:', error);
+    res.json({
       success: false,
-      message: 'Server error while creating account',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      message: error.code === 'ER_DUP_ENTRY' 
+        ? 'Username already exists' 
+        : 'Failed to create account'
     });
-  } finally {
-    if (connection) {
-      console.log('Releasing database connection');
-      connection.release();
+  }
+});
+
+router.post('/login', async (req, res) => {
+  const { username, sha_pass_hash } = req.body;
+  
+  try {
+    if (!dbPool) {
+      throw new Error('Database pool is not initialized');
     }
+    const [rows] = await dbPool.query<RowDataPacket[]>(
+      'SELECT id FROM account WHERE username = ? AND sha_pass_hash = ?',
+      [username, sha_pass_hash]
+    );
+
+    if (rows.length > 0) {
+      // Update last login
+      if (!dbPool) {
+        throw new Error('Database pool is not initialized');
+      }
+      await dbPool.query(
+        'UPDATE account SET last_login = NOW(), last_ip = ? WHERE id = ?',
+        [req.ip, rows[0].id]
+      );
+
+      res.json({ success: true });
+    } else {
+      res.json({ 
+        success: false, 
+        message: 'Invalid username or password' 
+      });
+    }
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.json({ 
+      success: false, 
+      message: 'Login failed' 
+    });
   }
 });
 

@@ -12,7 +12,7 @@ const dbConfig = {
 };
 
 // Create a connection pool
-const pool = mysql.createPool(dbConfig);
+export const pool = mysql.createPool(dbConfig);
 
 // Character database connection (if separate)
 if (getConfigValue<string>('USE_CHARS_DB', 'false') === 'true') {
