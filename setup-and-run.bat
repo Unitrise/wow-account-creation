@@ -30,7 +30,7 @@ if not exist package.json (
     exit /b 1
 )
 
-:: Install dependencies
+:: Install dependencies (including PM2 locally)
 echo Installing dependencies...
 call npm install
 if %errorLevel% neq 0 (
@@ -61,27 +61,6 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 echo Server built successfully.
-echo.
-
-:: Install PM2 globally
-echo Installing PM2 globally...
-call npm install -g pm2
-if %errorLevel% neq 0 (
-    echo Failed to install PM2 globally.
-    pause
-    exit /b 1
-)
-echo PM2 installed successfully.
-echo.
-
-:: Add npm global bin to PATH if not already there
-for /f "tokens=*" %%i in ('npm config get prefix') do set NPM_PREFIX=%%i
-set NPM_BIN=%NPM_PREFIX%\node_modules\npm\bin
-set PATH_TO_ADD=%NPM_PREFIX%;%NPM_BIN%
-
-echo Adding PM2 to PATH...
-setx PATH "%PATH%;%PATH_TO_ADD%" /M
-echo PATH updated.
 echo.
 
 :: Configure Windows Firewall
@@ -121,10 +100,10 @@ if not exist config.cfg (
     echo.
 )
 
-:: Start the application with PM2
+:: Start the application with local PM2
 echo Starting application with PM2...
-call pm2 delete wow-client >nul 2>&1
-call pm2 start dist/server/server.js --name wow-client
+call npx pm2 delete wow-client >nul 2>&1
+call npx pm2 start ecosystem.config.js
 if %errorLevel% neq 0 (
     echo Failed to start application with PM2.
     echo Trying to run directly...
@@ -137,30 +116,13 @@ echo.
 
 :: Save PM2 configuration
 echo Saving PM2 configuration...
-call pm2 save
+call npx pm2 save
 if %errorLevel% neq 0 (
     echo Failed to save PM2 configuration.
     pause
     exit /b 1
 )
 echo PM2 configuration saved.
-echo.
-
-:: Setup PM2 as a Windows service
-echo Setting up PM2 as a Windows service...
-call npm install -g pm2-windows-service
-if %errorLevel% neq 0 (
-    echo Failed to install PM2 Windows Service.
-    echo Your application is running, but won't automatically start when Windows boots.
-) else (
-    call pm2-service-install -n PM2
-    if %errorLevel% neq 0 (
-        echo Failed to install PM2 as a Windows service.
-        echo Your application is running, but won't automatically start when Windows boots.
-    ) else (
-        echo PM2 Windows service installed successfully.
-    )
-)
 echo.
 
 :: Get server IP address
@@ -179,13 +141,13 @@ if defined SERVER_IP (
 )
 echo.
 echo To manage the application:
-echo - View status: pm2 list
-echo - View logs: pm2 logs wow-client
-echo - Restart: pm2 restart wow-client
-echo - Stop: pm2 stop wow-client
+echo - View status: npx pm2 list
+echo - View logs: npx pm2 logs wow-client
+echo - Restart: npx pm2 restart wow-client
+echo - Stop: npx pm2 stop wow-client
 echo.
 echo If you encounter any issues, check the logs with:
-echo pm2 logs wow-client
+echo npx pm2 logs wow-client
 echo.
 
 pause
