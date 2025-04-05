@@ -90,8 +90,8 @@ if not exist config.cfg (
     echo SERVER_EXPANSION = 2 >> config.cfg
     echo DB_HOST = localhost >> config.cfg
     echo DB_PORT = 3306 >> config.cfg
-    echo DB_USER = acore >> config.cfg
-    echo DB_PASSWORD = password >> config.cfg
+    echo DB_USER = root >> config.cfg
+    echo DB_PASSWORD = root >> config.cfg
     echo DB_NAME = acore_auth >> config.cfg
     echo PORT = 3000 >> config.cfg
     echo FEATURE_ACCOUNT_CREATION = true >> config.cfg

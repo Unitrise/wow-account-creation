@@ -11,8 +11,8 @@ export const dbConfig = {
   connection: {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '3306'),
-    user: process.env.DB_USER || 'acore',
-    password: process.env.DB_PASSWORD || 'password',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'root',
     database: process.env.DB_NAME || 'acore_auth',
   },
 
@@ -36,8 +36,8 @@ export const dbConfig = {
   charactersDbConnection: {
     host: process.env.DB_CHARS_HOST || 'localhost',
     port: parseInt(process.env.DB_CHARS_PORT || '3306'),
-    user: process.env.DB_CHARS_USER || 'acore',
-    password: process.env.DB_CHARS_PASSWORD || 'password',
+    user: process.env.DB_CHARS_USER || 'root',
+    password: process.env.DB_CHARS_PASSWORD || 'root',
     database: process.env.DB_CHARS_DATABASE || 'acore_characters',
   },
 };

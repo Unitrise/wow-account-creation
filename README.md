@@ -28,8 +28,8 @@ A React TypeScript application for registering new players on the WoW - Israel s
    # Example configuration
    SERVER_NAME = WoW Israel
    DB_HOST = localhost
-   DB_USER = acore
-   DB_PASSWORD = yourpassword
+   DB_USER = root
+   DB_PASSWORD = root
    DB_NAME = acore_auth
    ```
 4. Add the WoW Israel logo image file to `public/images/wow-israel-logo.png` (the logo will be displayed large and will slightly overlap with the content)
@@ -45,8 +45,8 @@ This file contains server-side settings including database connection details, a
 ```
 # Example server config.cfg
 DB_HOST = localhost
-DB_USER = acore
-DB_PASSWORD = yourpassword
+DB_USER = root
+DB_PASSWORD = root
 DB_NAME = acore_auth
 ```
 
