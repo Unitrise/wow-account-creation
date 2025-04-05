@@ -1,5 +1,4 @@
 import axios, { AxiosError } from 'axios';
-import { createHash, randomBytes } from 'crypto';
 import { getConfigValue } from './services/configService';
 import { BigInteger } from 'jsbn';
 
@@ -9,7 +8,6 @@ const N_HEX = '894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7'
 const g_HEX = '7';
 const N = new BigInteger(N_HEX, 16);
 const g = new BigInteger(g_HEX, 16);
-// SRP6 multiplier parameter (not used directly in registration but kept for reference)
 
 // Interfaces
 export interface AccountData {
@@ -31,38 +29,78 @@ interface ErrorResponse {
 }
 
 /**
- * Creates a SHA1 hash of the input
+ * Creates a SHA1 hash of the input using browser SubtleCrypto
  * @param input - String to hash
  * @returns SHA1 hash as a hex string
  */
-const sha1 = (input: string): string => {
-  return createHash('sha1').update(input).digest('hex').toUpperCase();
+const sha1 = async (input: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex.toUpperCase();
+};
+
+/**
+ * Generate random bytes using Web Crypto API
+ * @param size - Number of bytes to generate
+ * @returns Uint8Array of random bytes
+ */
+const getRandomBytes = (size: number): Uint8Array => {
+  const array = new Uint8Array(size);
+  crypto.getRandomValues(array);
+  return array;
+};
+
+/**
+ * Convert a Uint8Array to a hex string
+ */
+const toHexString = (bytes: Uint8Array): string => {
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+/**
+ * Convert a Uint8Array to a base64 string
+ */
+const toBase64 = (bytes: Uint8Array): string => {
+  const binString = Array.from(bytes)
+    .map(x => String.fromCodePoint(x))
+    .join('');
+  return btoa(binString);
 };
 
 /**
  * Calculates the SRP6 verifier using AzerothCore's method
  * @param username - Account username
  * @param password - Account password
- * @param salt - Random salt as Buffer
- * @returns SRP6 verifier as a Buffer
+ * @param salt - Random salt as Uint8Array
+ * @returns Promise resolving to SRP6 verifier as a Uint8Array
  */
-const calculateSRP6Verifier = (username: string, password: string, salt: Buffer): Buffer => {
+const calculateSRP6Verifier = async (username: string, password: string, salt: Uint8Array): Promise<Uint8Array> => {
   // AzerothCore uses uppercase username and password for the identity calculation
   const identity = (username.toUpperCase() + ':' + password.toUpperCase());
-  const h1 = sha1(identity);
+  const h1 = await sha1(identity);
   
   // Convert salt to hex string
-  const saltHex = salt.toString('hex').toUpperCase();
+  const saltHex = toHexString(salt).toUpperCase();
   
   // Calculate x (H(s, H(I)))
-  const x = new BigInteger(sha1(saltHex + h1), 16);
+  const x = new BigInteger(await sha1(saltHex + h1), 16);
   
   // Calculate v = g^x % N
   const v = g.modPow(x, N);
   
-  // Convert v to a Buffer
+  // Convert v to a Uint8Array
   const vHex = v.toString(16).padStart(64, '0');
-  return Buffer.from(vHex, 'hex');
+  // Convert hex string to Uint8Array
+  const vBytes = new Uint8Array(32); // 32 bytes for 256 bits
+  for (let i = 0; i < 32; i++) {
+    vBytes[i] = parseInt(vHex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return vBytes;
 };
 
 /**
@@ -119,18 +157,18 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
     }
     
     // Generate a random salt (32 bytes as required by AzerothCore)
-    const salt = randomBytes(32);
+    const salt = getRandomBytes(32);
     
     // Calculate the verifier using SRP6
-    const verifier = calculateSRP6Verifier(username, password, salt);
+    const verifier = await calculateSRP6Verifier(username, password, salt);
     
     // Send registration data to server
     const createEndpoint = getApiEndpoint('ACCOUNT_CREATE');
     const response = await axios.post(`${getBaseUrl()}${createEndpoint}`, {
       username,
       email,
-      salt: salt.toString('base64'),
-      verifier: verifier.toString('base64'),
+      salt: toBase64(salt),
+      verifier: toBase64(verifier),
       expansion: getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2),
       language
     });
@@ -176,8 +214,8 @@ export const checkUsernameExists = async (username: string): Promise<boolean> =>
  * Generate session key for authentication
  * Currently not used for web authentication but could be useful for game client
  */
-export const generateSessionKey = (): Buffer => {
-  return randomBytes(40);
+export const generateSessionKey = (): Uint8Array => {
+  return getRandomBytes(40);
 };
 
 export default {

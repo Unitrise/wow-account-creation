@@ -17,40 +17,26 @@ interface PathModule {
 //   fileURLToPath: (url: string) => string;
 // }
 
-// Module references
+// Module references - initialized differently based on environment
 let fs: FileSystem | null = null;
 let path: PathModule | null = null;
-let __dirname: string | null = null;
 
-// Initialize modules for server-side (will be skipped in browser)
-async function initServerModules(): Promise<void> {
-  // Only run on server, not in browser
-  if (typeof window !== 'undefined') return;
-  
+// For browser environments, we'll use default config values
+const isBrowser = typeof window !== 'undefined';
+
+// Try to load modules only in Node.js environment
+if (!isBrowser) {
   try {
-    // Dynamically import server-side modules
-    const [fsModule, pathModule, urlModule] = await Promise.all([
-      import('fs'),
-      import('path'),
-      import('url')
-    ]);
-    
-    // Store module references
-    fs = fsModule as unknown as FileSystem;
-    path = pathModule as unknown as PathModule;
-    
-    // Get current directory
-    const __filename = urlModule.fileURLToPath(import.meta.url);
-    __dirname = pathModule.dirname(__filename);
-    
-    console.log('Server modules loaded successfully');
+    // In CommonJS environment, we can require these directly
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    fs = require('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    path = require('path');
+    // __dirname is already available in CommonJS
   } catch (error) {
     console.error('Failed to load server modules:', error);
   }
 }
-
-// Try to initialize server modules (will be ignored in browser)
-initServerModules();
 
 // Config cache
 let configCache: Record<string, string> | null = null;
@@ -71,11 +57,10 @@ export function loadConfig(relativePath = 'config.cfg'): Record<string, string> 
   
   try {
     // Server-side loading from file
-    if (typeof window === 'undefined' && fs && path && __dirname) {
+    if (!isBrowser && fs && path) {
       // Resolve path to config file
       // The config file should be in the project root
-      const rootDir = path.resolve(__dirname, '../../../');
-      const configPath = path.join(rootDir, relativePath);
+      const configPath = path.resolve(process.cwd(), relativePath);
       
       console.log(`Loading config from: ${configPath}`);
       
@@ -106,8 +91,7 @@ export function loadConfig(relativePath = 'config.cfg'): Record<string, string> 
         }
       }
     } else {
-      // Client-side: try to fetch from a public path or use defaults
-      // This is a fallback in case server cannot provide config
+      // Client-side: use defaults
       console.log('Client-side loading defaults from static configuration');
       
       // Default client configuration - these values should match your config.cfg
@@ -119,7 +103,7 @@ export function loadConfig(relativePath = 'config.cfg'): Record<string, string> 
         SERVER_REALMLIST: 'wow-israel.com',
         
         // API settings
-        API_BASE_URL: 'http://localhost:3000',
+        API_BASE_URL: window.location.origin || 'http://localhost:3000',
         API_ACCOUNT_CREATE: '/api/account/create',
         API_ACCOUNT_CHECK: '/api/account/check',
         API_ACCOUNT_LOGIN: '/api/account/login',

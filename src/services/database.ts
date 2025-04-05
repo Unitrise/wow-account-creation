@@ -21,7 +21,6 @@ const dbConfig = {
 const pool = mysql.createPool(dbConfig);
 
 // Character database connection (if separate)
-let charPool: mysql.Pool | null = null;
 if (config.USE_CHARS_DB === 'true') {
   const charDbConfig = {
     host: config.DB_CHARS_HOST || process.env.DB_CHARS_HOST || 'localhost',
@@ -30,7 +29,8 @@ if (config.USE_CHARS_DB === 'true') {
     password: config.DB_CHARS_PASSWORD || process.env.DB_CHARS_PASSWORD || 'password',
     database: config.DB_CHARS_DATABASE || process.env.DB_CHARS_DATABASE || 'acore_characters',
   };
-  charPool = mysql.createPool(charDbConfig);
+  // Character pool creation commented out until needed
+   mysql.createPool(charDbConfig);
 }
 
 // Password hashing methods
@@ -99,9 +99,7 @@ export const createAccount = async (
   options: AccountOptions = {}
 ): Promise<{ success: boolean; message: string }> => {
   const accountTable = options.accountTable || config.DB_TABLE_ACCOUNT || 'account';
-  // const defaultStatus = options.defaultStatus !== undefined 
-  //   ? options.defaultStatus 
-  //   : parseInt(config.ACCOUNT_DEFAULT_STATUS || '0');
+  // Status is set by the database default value
   const defaultExpansion = options.defaultExpansion !== undefined 
     ? options.defaultExpansion 
     : parseInt(config.ACCOUNT_DEFAULT_EXPANSION || '2');

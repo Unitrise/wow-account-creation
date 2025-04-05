@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { loadConfig, getConfigValue } from '../services/configService.js';
+import { loadConfig, getConfigValue } from '../services/configService';
 
 // Define config context type
 interface ConfigContextType {
@@ -24,7 +24,8 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const loadConfigData = async () => {
     try {
       setIsLoading(true);
-      const configData = loadConfig();
+      // Load config silently - we use getConfigValue directly
+      loadConfig();
       
       // Create a more friendly object with converted values
       const processedConfig: Record<string, any> = {
