@@ -8,13 +8,13 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist/server",
-    "rootDir": ".",
+    "rootDir": "src",
     "baseUrl": ".",
     "allowSyntheticDefaultImports": true,
     "paths": {
       "*": ["node_modules/*"]
     }
   },
-  "include": ["server.ts", "src/services/**/*", "src/server/**/*"],
+  "include": ["src/server/**/*", "src/services/**/*"],
   "exclude": ["node_modules"]
 } 

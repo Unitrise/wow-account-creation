@@ -5,12 +5,13 @@
   "type": "commonjs",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:client": "tsc -b tsconfig.app.json && vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run build:client && npm run build:server",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server:build": "tsc -p tsconfig.server.json",
-    "server:start": "node dist/server/server.js",
-    "server:dev": "tsc -p tsconfig.server.json --watch & nodemon dist/server/server.js",
+    "server:start": "node dist/server/index.js",
+    "server:dev": "tsc -p tsconfig.server.json --watch & nodemon dist/server/index.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run server:dev\""
   },
   "dependencies": {

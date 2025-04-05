@@ -42,26 +42,15 @@ if %errorLevel% neq 0 (
 echo Dependencies installed successfully.
 echo.
 
-:: Build client
-echo Building client...
+:: Build client and server
+echo Building client and server...
 call npm run build
 if %errorLevel% neq 0 (
-    echo Failed to build client.
+    echo Failed to build application.
     pause
     exit /b 1
 )
-echo Client built successfully.
-echo.
-
-:: Build server
-echo Building server...
-call npm run server:build
-if %errorLevel% neq 0 (
-    echo Failed to build server.
-    pause
-    exit /b 1
-)
-echo Server built successfully.
+echo Build completed successfully.
 echo.
 
 :: Configure Windows Firewall with proper error handling
@@ -112,31 +101,6 @@ if not exist config.cfg (
 :: Create a PM2 ecosystem file for better process management
 echo Creating PM2 ecosystem file...
 (
-echo {
-echo   "apps": [
-echo     {
-echo       "name": "wow-client",
-echo       "script": "node_modules/.bin/vite",
-echo       "cwd": "%PROJECT_DIR%",
-echo       "env": {
-echo         "NODE_ENV": "production"
-echo       }
-echo     },
-echo     {
-echo       "name": "wow-server",
-echo       "script": "dist/server/server.js",
-echo       "cwd": "%PROJECT_DIR%",
-echo       "env": {
-echo         "NODE_ENV": "production"
-echo       }
-echo     }
-echo   ]
-echo }
-) > ecosystem.config.js
-
-:: Create a temporary JavaScript file to properly format the JSON
-echo Creating properly formatted ecosystem config...
-(
 echo const fs = require('fs');
 echo const config = {
 echo   apps: [
@@ -150,7 +114,7 @@ echo       }
 echo     },
 echo     {
 echo       name: 'wow-server',
-echo       script: 'dist/server/server.js',
+echo       script: 'dist/server/index.js',
 echo       cwd: '%PROJECT_DIR%',
 echo       env: {
 echo         NODE_ENV: 'production'

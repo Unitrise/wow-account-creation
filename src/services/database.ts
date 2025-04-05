@@ -195,6 +195,25 @@ export const verifyAccount = async (
 };
 
 /**
+ * Check if an account exists
+ * @param username Account username to check
+ * @returns Whether the account exists
+ */
+export async function checkAccount(username: string): Promise<boolean> {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT id FROM account WHERE username = ?',
+      [username]
+    );
+    
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (error) {
+    console.error('Error checking account:', error);
+    return false;
+  }
+}
+
+/**
  * Load configuration from a file
  * @param filePath Path to the config file
  * @returns Configuration object
@@ -234,5 +253,6 @@ function loadConfig(filePath: string): Record<string, string> {
 export default {
   createAccount,
   verifyAccount,
-  hashPassword
+  hashPassword,
+  checkAccount
 }; 
