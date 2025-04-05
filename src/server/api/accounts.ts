@@ -1,18 +1,20 @@
-import express from 'express';
 import mysql from 'mysql2/promise';
-import { getConfigValue } from '../../services/configService';
+import { getConfigValue, loadConfig } from '../../services/configService';
+import { Router } from 'express';
+import database from '../../services/database';
 
-const router = express.Router();
+const router = Router();
+const config = loadConfig();
 
 /**
  * Get database configuration from config.cfg
  */
 const getDbConfig = () => ({
-  host: getConfigValue<string>('DB_HOST', 'localhost'),
-  port: getConfigValue<number>('DB_PORT', 3306),
-  user: getConfigValue<string>('DB_USER', 'acore'),
-  password: getConfigValue<string>('DB_PASSWORD', 'password'),
-  database: getConfigValue<string>('DB_NAME', 'acore_auth'),
+  host: getConfigValue<string>(config, 'DB_HOST', 'localhost'),
+  port: getConfigValue<number>(config, 'DB_PORT', 3306),
+  user: getConfigValue<string>(config, 'DB_USER', 'acore'),
+  password: getConfigValue<string>(config, 'DB_PASSWORD', 'password'),
+  database: getConfigValue<string>(config, 'DB_NAME', 'acore_auth'),
 });
 
 /**
@@ -52,7 +54,7 @@ router.get('/check', async (req, res) => {
     const connection = await getPool().getConnection();
     
     try {
-      const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+      const accountTable = getConfigValue<string>(config, 'DB_TABLE_ACCOUNT', 'account');
       
       const [rows] = await connection.execute(
         `SELECT id FROM ${accountTable} WHERE username = ?`,
@@ -82,77 +84,68 @@ router.get('/check', async (req, res) => {
  * @route POST /api/account/create
  */
 router.post('/create', async (req, res) => {
+  const { username, password, email } = req.body;
+
   try {
     // Check if account creation is enabled
-    if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
+    const accountCreationEnabled = getConfigValue<boolean>(config, 'FEATURE_ACCOUNT_CREATION', true);
+    if (!accountCreationEnabled) {
       return res.status(403).json({
         success: false,
         message: 'Account creation is currently disabled',
       });
     }
-    
-    const { username, email, salt, verifier, expansion, language } = req.body;
-    
-    // Validate required fields
-    if (!username || !email || !salt || !verifier) {
-      return res.status(400).json({
-        success: false,
-        message: 'Required fields are missing',
-      });
+
+    // Check if account already exists
+    const exists = await database.checkAccount(username);
+    if (exists) {
+      return res.status(400).json({ error: 'Account already exists' });
     }
-    
-    const connection = await getPool().getConnection();
-    
-    try {
-      const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
-      
-      // Check if username already exists
-      const [existingRows] = await connection.execute(
-        `SELECT id FROM ${accountTable} WHERE username = ?`,
-        [username]
-      );
-      
-      if (Array.isArray(existingRows) && existingRows.length > 0) {
-        return res.status(409).json({
-          success: false,
-          message: 'Username already exists',
-        });
-      }
-      
-      // Convert from base64 to Buffer
-      const saltBuffer = Buffer.from(salt, 'base64');
-      const verifierBuffer = Buffer.from(verifier, 'base64');
-      
-      // Default expansion if not provided
-      const defaultExpansion = getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2);
-      const accountExpansion = expansion || defaultExpansion;
-      
-      // Default locale
-      const defaultLocale = language === 'en' ? 0 : (language === 'he' ? 10 : 0);
-      
-      // Insert new account with SRP6 auth
-      const [result] = await connection.execute(
-        `INSERT INTO ${accountTable} (username, salt, verifier, email, reg_mail, joindate, expansion, locale) 
-         VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
-        [username, saltBuffer, verifierBuffer, email, email, accountExpansion, defaultLocale]
-      );
-      
-      const insertResult = result as { insertId: number };
-      
-      return res.status(201).json({
-        success: true,
-        message: 'Account created successfully',
-        accountId: insertResult.insertId,
-      });
-    } finally {
-      connection.release();
+
+    // Create the account
+    const result = await database.createAccount(username, email, password);
+    if (!result.success) {
+      return res.status(500).json({ error: result.message });
     }
+    res.json({ success: true, accountId: result.message });
   } catch (error) {
     console.error('Error creating account:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error during account creation',
-    });
+    res.status(500).json({ error: 'Failed to create account' });
+  }
+});
+
+/**
+ * Check account endpoint
+ * @route GET /api/account/check/:username
+ */
+router.get('/check/:username', async (req, res) => {
+  const { username } = req.params;
+
+  try {
+    const exists = await database.checkAccount(username);
+    res.json({ exists });
+  } catch (error) {
+    console.error('Error checking account:', error);
+    res.status(500).json({ error: 'Failed to check account' });
+  }
+});
+
+/**
+ * Login endpoint
+ * @route POST /api/account/login
+ */
+router.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const result = await database.verifyAccount(username, password);
+    if (!result.success) {
+      return res.status(401).json({ error: result.message });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error during login:', error);
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 

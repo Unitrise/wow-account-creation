@@ -1,5 +1,8 @@
 import axios from 'axios';
-import { getConfigValue } from './configService.js';
+import { getConfigValue, loadConfig } from './configService.js';
+
+// Load configuration
+const config = loadConfig();
 
 // Define interfaces
 export interface RegisterUserParams {
@@ -18,14 +21,14 @@ export interface LoginParams {
  * Get base API URL from config
  */
 const getBaseUrl = (): string => {
-  return getConfigValue<string>('API_BASE_URL', 'http://localhost:3000');
+  return getConfigValue<string>(config, 'API_BASE_URL', 'http://localhost:3000');
 };
 
 /**
  * Get API endpoint from config
  */
 const getApiEndpoint = (endpoint: string): string => {
-  return getConfigValue<string>(`API_${endpoint.toUpperCase()}`, `/api/${endpoint.toLowerCase()}`);
+  return getConfigValue<string>(config, `API_${endpoint.toUpperCase()}`, `/api/${endpoint.toLowerCase()}`);
 };
 
 /**
@@ -46,7 +49,7 @@ const api = axios.create({
 export const registerUser = async (params: RegisterUserParams): Promise<boolean> => {
   try {
     // Check if account creation is enabled
-    if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
+    if (!getConfigValue<boolean>(config, 'FEATURE_ACCOUNT_CREATION', true)) {
       console.error('Account creation is disabled in config');
       return false;
     }

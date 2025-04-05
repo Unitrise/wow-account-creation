@@ -4,18 +4,13 @@ import type { PathLike } from 'fs';
 // TypeScript interfaces for dynamic imports
 interface FileSystem {
   existsSync: (path: PathLike) => boolean;
-  readFileSync: (path: PathLike, encoding: string) => string;
+  readFileSync: (path: PathLike, options?: any) => string;
 }
 
 interface PathModule {
   resolve: (...paths: string[]) => string;
-  join: (...paths: string[]) => string;
   dirname: (path: string) => string;
 }
-
-// interface UrlModule {
-//   fileURLToPath: (url: string) => string;
-// }
 
 // Module references - initialized differently based on environment
 let fs: FileSystem | null = null;
@@ -40,6 +35,30 @@ if (!isBrowser) {
 
 // Config cache
 let configCache: Record<string, string> | null = null;
+
+/**
+ * Get a configuration value with type safety
+ * @param config Configuration object
+ * @param key Configuration key
+ * @param defaultValue Default value if key not found
+ * @returns Typed configuration value
+ */
+export function getConfigValue<T>(config: Record<string, string>, key: string, defaultValue: T): T {
+  const value = config[key];
+  
+  if (value === undefined) {
+    return defaultValue;
+  }
+  
+  // Type conversion based on the default value type
+  if (typeof defaultValue === 'number') {
+    return Number(value) as T;
+  } else if (typeof defaultValue === 'boolean') {
+    return (value.toLowerCase() === 'true') as T;
+  } else {
+    return value as T;
+  }
+}
 
 /**
  * Load configuration from a file (server-side)
@@ -136,41 +155,8 @@ export function loadConfig(relativePath = 'config.cfg'): Record<string, string> 
   return config;
 }
 
-/**
- * Get a value from the config
- * @param key Config key
- * @param defaultValue Default value if key is not found
- * @returns Config value or default
- */
-export function getConfigValue<T>(key: string, defaultValue: T): T {
-  // Ensure config is loaded
-  const config = loadConfig();
-  
-  if (key in config) {
-    const value = config[key];
-    
-    // Auto-convert based on default value type
-    if (typeof defaultValue === 'boolean') {
-      return (value === 'true') as unknown as T;
-    } else if (typeof defaultValue === 'number') {
-      return Number(value) as unknown as T;
-    } else {
-      return value as unknown as T;
-    }
-  }
-  
-  return defaultValue;
-}
-
-/**
- * Clear the config cache, forcing a reload on next request
- */
-export function clearConfigCache(): void {
-  configCache = null;
-}
-
+// Export a default object with all functions
 export default {
   loadConfig,
-  getConfigValue,
-  clearConfigCache
+  getConfigValue
 }; 

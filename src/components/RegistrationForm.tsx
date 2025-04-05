@@ -12,8 +12,11 @@ import { useTranslation } from 'react-i18next';
 import { styled } from '@mui/material/styles';
 import { useRegistrationStore } from '../store/registrationStore.js';
 import { registerUser } from '../services/api.js';
-import { getConfigValue } from '../services/configService.js';
+import { getConfigValue, loadConfig } from '../services/configService.js';
 import { theme as appTheme } from '../theme/theme.js';
+
+// Load configuration
+const config = loadConfig();
 
 // Styled components
 const FormContainer = styled(Paper)({
@@ -81,13 +84,13 @@ export const RegistrationForm: React.FC = () => {
   } = useRegistrationStore();
 
   // Get server name from config for form title
-  const serverName = getConfigValue<string>('SERVER_NAME', 'WoW Israel');
+  const serverName = getConfigValue<string>(config, 'SERVER_NAME', 'WoW Israel');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Check if account creation is enabled
-    if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
+    if (!getConfigValue<boolean>(config, 'FEATURE_ACCOUNT_CREATION', true)) {
       setError(t('registration.errors.accountCreationDisabled'));
       return;
     }

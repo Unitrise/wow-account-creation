@@ -1,7 +1,10 @@
 import axios, { AxiosError } from 'axios';
 import { createHash, randomBytes } from 'crypto';
-import { getConfigValue } from './configService.js';
+import { getConfigValue, loadConfig } from './configService.js';
 import { BigInteger } from 'jsbn';
+
+// Load configuration
+const config = loadConfig();
 
 // Constants for AzerothCore SRP6 calculation
 // These match the values used by AzerothCore
@@ -69,14 +72,14 @@ const calculateSRP6Verifier = (username: string, password: string, salt: Buffer)
  * Get base API URL from config
  */
 const getBaseUrl = (): string => {
-  return getConfigValue<string>('API_BASE_URL', 'http://localhost:3000');
+  return getConfigValue<string>(config, 'API_BASE_URL', 'http://localhost:3000');
 };
 
 /**
  * Get API endpoint from config
  */
 const getApiEndpoint = (endpoint: string): string => {
-  return getConfigValue<string>(`API_${endpoint.toUpperCase()}`, `/api/${endpoint.toLowerCase()}`);
+  return getConfigValue<string>(config, `API_${endpoint.toUpperCase()}`, `/api/${endpoint.toLowerCase()}`);
 };
 
 /**
@@ -87,7 +90,7 @@ const getApiEndpoint = (endpoint: string): string => {
 export const registerAccount = async (accountData: AccountData): Promise<RegisterResponse> => {
   try {
     // Check if account creation is enabled
-    if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
+    if (!getConfigValue<boolean>(config, 'FEATURE_ACCOUNT_CREATION', true)) {
       return { success: false, message: 'Account creation is disabled in server configuration' };
     }
     
@@ -103,7 +106,7 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
     }
     
     // Check if email is required
-    if (getConfigValue<boolean>('ACCOUNT_REQUIRE_EMAIL', true) && (!email || !email.includes('@'))) {
+    if (getConfigValue<boolean>(config, 'ACCOUNT_REQUIRE_EMAIL', true) && (!email || !email.includes('@'))) {
       return { success: false, message: 'Valid email address is required' };
     }
     
@@ -131,7 +134,7 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
       email,
       salt: salt.toString('base64'),
       verifier: verifier.toString('base64'),
-      expansion: getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2),
+      expansion: getConfigValue<number>(config, 'ACCOUNT_DEFAULT_EXPANSION', 2),
       language
     });
     
