@@ -146,78 +146,102 @@ const getLocaleId = (language: string = 'en'): number => {
  * @route POST /api/account/create
  */
 router.post('/create', async (req, res) => {
+  console.log('Received account creation request');
   const { username, email, salt, verifier, expansion, language } = req.body;
+  
+  // Log the received data (excluding sensitive info)
+  console.log('Account creation data:', {
+    username,
+    email,
+    expansion,
+    language,
+    hasSalt: !!salt,
+    hasVerifier: !!verifier
+  });
   
   // Validate required fields
   if (!username || !email || !salt || !verifier) {
+    console.error('Missing required fields:', {
+      hasUsername: !!username,
+      hasEmail: !!email,
+      hasSalt: !!salt,
+      hasVerifier: !!verifier
+    });
     return res.status(400).json({
       success: false,
       message: 'Username, email, salt, and verifier are required',
     });
   }
   
+  let connection;
   try {
-    const pool = await getPool();
-    const connection = await pool.getConnection();
+    console.log('Getting database connection...');
+    const currentPool = await getPool();
+    connection = await currentPool.getConnection();
+    console.log('Database connection acquired');
     
-    try {
-      const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
-      console.log(`Creating account in table: ${accountTable}`);
-      
-      // Check if username already exists
-      const [existingUsers] = await connection.execute(
-        `SELECT id FROM ${accountTable} WHERE username = ?`,
-        [username]
-      );
-      
-      if (Array.isArray(existingUsers) && existingUsers.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Username already exists',
-        });
-      }
-      
-      // Get default expansion from config
-      const defaultExpansion = getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2);
-      const accountExpansion = expansion !== undefined ? expansion : defaultExpansion;
-      
-      // Convert language to locale ID
-      const localeId = getLocaleId(language);
-      
-      // Insert the new account with SRP6 data
-      const [result] = await connection.execute(
-        `INSERT INTO ${accountTable} (
-          username, 
-          salt, 
-          verifier, 
-          email, 
-          reg_mail, 
-          joindate, 
-          expansion, 
-          locale
-        ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
-        [
-          username,
-          Buffer.from(salt, 'base64'),  // Convert base64 salt to binary
-          Buffer.from(verifier, 'base64'),  // Convert base64 verifier to binary
-          email,
-          email,
-          accountExpansion,
-          localeId
-        ]
-      );
-      
-      // Get the account ID
-      const accountId = (result as any).insertId;
-      
-      res.json({
-        success: true,
-        message: 'Account created successfully',
-        accountId,
+    const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+    console.log(`Creating account in table: ${accountTable}`);
+    
+    // Check if username already exists
+    console.log('Checking for existing username...');
+    const [existingUsers] = await connection.execute(
+      `SELECT id FROM ${accountTable} WHERE username = ?`,
+      [username]
+    );
+    
+    if (Array.isArray(existingUsers) && existingUsers.length > 0) {
+      console.log('Username already exists');
+      return res.status(400).json({
+        success: false,
+        message: 'Username already exists',
       });
-    } finally {
-      connection.release();
     }
+    
+    // Get default expansion from config
+    const defaultExpansion = getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2);
+    const accountExpansion = expansion !== undefined ? expansion : defaultExpansion;
+    
+    // Convert language to locale ID
+    const localeId = getLocaleId(language);
+    
+    console.log('Inserting new account...');
+    // Insert the new account with SRP6 data
+    const [result] = await connection.execute(
+      `INSERT INTO ${accountTable} (
+        username,
+        salt,
+        verifier,
+        email,
+        reg_mail,
+        joindate,
+        last_ip,
+        expansion,
+        locale,
+        os
+      ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)`,
+      [
+        username,
+        Buffer.from(salt, 'base64'),  // Convert base64 salt to binary
+        Buffer.from(verifier, 'base64'),  // Convert base64 verifier to binary
+        email,
+        email,
+        '127.0.0.1',  // default last_ip
+        accountExpansion,
+        localeId,
+        ''  // default os
+      ]
+    );
+    
+    // Get the account ID
+    const accountId = (result as any).insertId;
+    console.log('Account created successfully:', { accountId });
+    
+    res.json({
+      success: true,
+      message: 'Account created successfully',
+      accountId,
+    });
   } catch (error) {
     console.error('Database error creating account:', error);
     res.status(500).json({
@@ -225,6 +249,11 @@ router.post('/create', async (req, res) => {
       message: 'Server error while creating account',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
+  } finally {
+    if (connection) {
+      console.log('Releasing database connection');
+      connection.release();
+    }
   }
 });
 

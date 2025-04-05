@@ -112,8 +112,11 @@ const getApiEndpoint = (endpoint: string): string => {
  */
 export const registerAccount = async (accountData: AccountData): Promise<RegisterResponse> => {
   try {
+    console.log('Starting account registration process...');
+    
     // Check if account creation is enabled
     if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
+      console.log('Account creation is disabled');
       return { success: false, message: 'Account creation is disabled in server configuration' };
     }
     
@@ -121,45 +124,66 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
     
     // Validate username and password
     if (username.length < 3 || username.length > 32) {
+      console.log('Invalid username length');
       return { success: false, message: 'Username must be between 3 and 32 characters' };
     }
     
     if (password.length < 8) {
+      console.log('Invalid password length');
       return { success: false, message: 'Password must be at least 8 characters' };
     }
     
     // Check if email is required
     if (getConfigValue<boolean>('ACCOUNT_REQUIRE_EMAIL', true) && (!email || !email.includes('@'))) {
+      console.log('Invalid email');
       return { success: false, message: 'Valid email address is required' };
     }
     
     // Check if username exists before continuing
+    console.log('Checking if username exists...');
     try {
       const exists = await checkUsernameExists(username);
       if (exists) {
+        console.log('Username already exists');
         return { success: false, message: 'Username already exists' };
       }
     } catch (error) {
       console.error('Error checking username existence:', error);
-      // Continue with registration attempt even if check fails
     }
     
+    console.log('Generating SRP6 authentication data...');
     // Generate a random salt (32 bytes as required by AzerothCore)
     const salt = randomBytes(32);
     
     // Calculate the verifier using SRP6
     const verifier = await calculateSRP6Verifier(username, password, salt);
     
-    // Send registration data to server
+    // Get the API endpoint
     const createEndpoint = getApiEndpoint('ACCOUNT_CREATE');
-    const response = await axios.post(`${getBaseUrl()}${createEndpoint}`, {
-      username,
-      email,
-      salt: salt.toString('base64'),
-      verifier: verifier.toString('base64'),
-      expansion: getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2),
-      language
-    });
+    const baseUrl = getBaseUrl();
+    console.log('Sending registration request to:', `${baseUrl}${createEndpoint}`);
+    
+    // Send registration data to server
+    const response = await axios.post(
+      `${baseUrl}${createEndpoint}`,
+      {
+        username,
+        email,
+        salt: salt.toString('base64'),
+        verifier: verifier.toString('base64'),
+        expansion: getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2),
+        language
+      },
+      {
+        timeout: 10000, // 10 second timeout
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      }
+    );
+    
+    console.log('Registration response:', response.data);
     
     if (response.data && response.data.success) {
       return {
@@ -168,6 +192,7 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
         accountId: response.data.accountId
       };
     } else {
+      console.error('Registration failed:', response.data);
       return {
         success: false,
         message: response.data.message || 'Unknown error occurred during account creation'
