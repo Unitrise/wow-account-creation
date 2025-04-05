@@ -15,10 +15,20 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-:: Set the project directory to the current directory
-set PROJECT_DIR=%CD%
+:: Change to the project directory explicitly
+cd /d C:\AzerothCore\wow-account-creation
+set PROJECT_DIR=C:\AzerothCore\wow-account-creation
 echo Project directory: %PROJECT_DIR%
 echo.
+
+:: Verify we're in the correct directory
+if not exist package.json (
+    echo ERROR: package.json not found in %CD%
+    echo Make sure you're running this script from the project directory.
+    echo This script is expecting to be in: C:\AzerothCore\wow-account-creation
+    pause
+    exit /b 1
+)
 
 :: Install dependencies
 echo Installing dependencies...
@@ -117,6 +127,8 @@ call pm2 delete wow-client >nul 2>&1
 call pm2 start dist/server/server.js --name wow-client
 if %errorLevel% neq 0 (
     echo Failed to start application with PM2.
+    echo Trying to run directly...
+    node dist/server/server.js
     pause
     exit /b 1
 )
