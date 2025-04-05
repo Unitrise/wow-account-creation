@@ -1,0 +1,59 @@
+{
+  "navigation": {
+    "home": "דף הבית",
+    "download": "הורד לקוח",
+    "english": "אנגלית",
+    "hebrew": "עברית"
+  },
+  "homePage": {
+    "title": "ברוכים הבאים ל-WoW - ישראל",
+    "subtitle": "הצטרפו לקהילה שלנו והתחילו את ההרפתקה שלכם היום",
+    "downloadButton": "הורד לקוח"
+  },
+  "downloadPage": {
+    "title": "הורד את לקוח World of Warcraft"
+  },
+  "registration": {
+    "title": "צור את החשבון שלך",
+    "subtitle": "צור חשבון והצטרף להרפתקה",
+    "username": "שם משתמש",
+    "email": "דואר אלקטרוני",
+    "password": "סיסמה",
+    "confirmPassword": "אימות סיסמה",
+    "submit": "צור חשבון",
+    "language": "שפה",
+    "english": "אנגלית",
+    "hebrew": "עברית",
+    "errors": {
+      "usernameRequired": "נדרש שם משתמש",
+      "emailRequired": "נדרש דואר אלקטרוני",
+      "emailInvalid": "נא להזין כתובת דואר אלקטרוני תקינה",
+      "passwordRequired": "נדרשת סיסמה",
+      "passwordLength": "הסיסמה חייבת להכיל לפחות 8 תווים",
+      "passwordsMatch": "הסיסמאות חייבות להתאים",
+      "usernameExists": "שם המשתמש כבר קיים",
+      "serverError": "אירעה שגיאה. אנא נסה שוב מאוחר יותר."
+    },
+    "success": "החשבון נוצר בהצלחה! כעת תוכל להתחבר למשחק."
+  },
+  "clientDownload": {
+    "title": "הורד את לקוח World of Warcraft",
+    "english": "מדריך באנגלית",
+    "hebrew": "מדריך בעברית",
+    "englishGuide": "איך להוריד ולהתקין",
+    "hebrewGuide": "איך להוריד ולהתקין",
+    "downloadButton": "הורד לקוח",
+    "step1": {
+      "title": "שלב 1: הורד את הלקוח",
+      "description": "לחץ על הכפתור למטה כדי להוריד את לקוח World of Warcraft. גודל ההורדה הוא כ-15GB. ודא שיש לך מספיק מקום בדיסק וחיבור אינטרנט יציב."
+    },
+    "step2": {
+      "title": "שלב 2: הגדר את Realmlist",
+      "description": "לאחר ההתקנה, מצא את הקובץ 'realmlist.wtf' בתיקיית World of Warcraft שלך. פתח אותו בעורך טקסט והחלף את תוכנו בשורה הבאה:"
+    },
+    "step3": {
+      "title": "שלב 3: הפעל את המשחק",
+      "description": "הפעל את World of Warcraft והתחבר עם פרטי החשבון שלך. אם עדיין לא יצרת חשבון, אנא הירשם באמצעות הטופס למעלה."
+    }
+  }
+} 

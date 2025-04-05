@@ -1,0 +1,58 @@
+{
+  "navigation": {
+    "home": "Home",
+    "download": "Download Client",
+    "english": "English",
+    "hebrew": "Hebrew"
+  },
+  "homePage": {
+    "title": "Welcome to WoW - Israel",
+    "subtitle": "Join our community and start your adventure today",
+    "downloadButton": "Download Client"
+  },
+  "downloadPage": {
+    "title": "Download World of Warcraft Client"
+  },
+  "registration": {
+    "title": "Create Your Account",
+    "username": "Username",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "submit": "Create Account",
+    "language": "Language",
+    "english": "English",
+    "hebrew": "Hebrew",
+    "errors": {
+      "usernameRequired": "Username is required",
+      "emailRequired": "Email is required",
+      "emailInvalid": "Please enter a valid email address",
+      "passwordRequired": "Password is required",
+      "passwordLength": "Password must be at least 8 characters",
+      "passwordsMatch": "Passwords must match",
+      "usernameExists": "Username already exists",
+      "serverError": "An error occurred. Please try again later."
+    },
+    "success": "Account created successfully! You can now log in to the game."
+  },
+  "clientDownload": {
+    "title": "Download World of Warcraft Client",
+    "english": "English Guide",
+    "hebrew": "Hebrew Guide",
+    "englishGuide": "How to Download and Install",
+    "hebrewGuide": "איך להוריד ולהתקין",
+    "downloadButton": "Download Client",
+    "step1": {
+      "title": "Step 1: Download the Client",
+      "description": "Click the button below to download the World of Warcraft client. The download size is approximately 15GB. Make sure you have enough disk space and a stable internet connection."
+    },
+    "step2": {
+      "title": "Step 2: Configure Realmlist",
+      "description": "After installation, locate the 'realmlist.wtf' file in your World of Warcraft directory. Open it with a text editor and replace its contents with the following line:"
+    },
+    "step3": {
+      "title": "Step 3: Launch the Game",
+      "description": "Launch World of Warcraft and log in with your account credentials. If you haven't created an account yet, please register using the form above."
+    }
+  }
+} 
