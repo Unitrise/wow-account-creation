@@ -22,7 +22,6 @@ export default defineConfig({
   resolve: {
     alias: {
       // Handle Node.js modules for browser
-      crypto: 'crypto-browserify',
       stream: 'stream-browserify',
       path: 'path-browserify',
       fs: 'memfs',
@@ -30,6 +29,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['buffer', 'crypto-browserify', 'jsbn']
+    include: ['buffer', 'jsbn']
   }
 })

@@ -1,6 +1,5 @@
 import axios, { AxiosError } from 'axios';
 import { Buffer } from 'buffer';
-import { createHash, randomBytes } from 'crypto-browserify';
 import { getConfigValue } from './configService.js';
 import { BigInteger } from 'jsbn';
 
@@ -37,12 +36,33 @@ interface ErrorResponse {
 }
 
 /**
- * Creates a SHA1 hash of the input
+ * Creates a SHA1 hash of the input using Web Crypto API
  * @param input - String to hash
  * @returns SHA1 hash as a hex string
  */
-const sha1 = (input: string): string => {
-  return createHash('sha1').update(input).digest('hex').toUpperCase();
+const sha1 = async (input: string): Promise<string> => {
+  // Convert string to Uint8Array
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  
+  // Use Web Crypto API to hash
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  
+  // Convert to hex string
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex.toUpperCase();
+};
+
+/**
+ * Generate random bytes using Web Crypto API
+ * @param size - Number of bytes to generate
+ * @returns Buffer with random bytes
+ */
+const randomBytes = (size: number): Buffer => {
+  const array = new Uint8Array(size);
+  crypto.getRandomValues(array);
+  return Buffer.from(array);
 };
 
 /**
@@ -52,16 +72,16 @@ const sha1 = (input: string): string => {
  * @param salt - Random salt as Buffer
  * @returns SRP6 verifier as a Buffer
  */
-const calculateSRP6Verifier = (username: string, password: string, salt: Buffer): Buffer => {
+const calculateSRP6Verifier = async (username: string, password: string, salt: Buffer): Promise<Buffer> => {
   // AzerothCore uses uppercase username and password for the identity calculation
   const identity = (username.toUpperCase() + ':' + password.toUpperCase());
-  const h1 = sha1(identity);
+  const h1 = await sha1(identity);
   
   // Convert salt to hex string
   const saltHex = salt.toString('hex').toUpperCase();
   
   // Calculate x (H(s, H(I)))
-  const x = new BigInteger(sha1(saltHex + h1), 16);
+  const x = new BigInteger(await sha1(saltHex + h1), 16);
   
   // Calculate v = g^x % N
   const v = g.modPow(x, N);
@@ -128,7 +148,7 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
     const salt = randomBytes(32);
     
     // Calculate the verifier using SRP6
-    const verifier = calculateSRP6Verifier(username, password, salt);
+    const verifier = await calculateSRP6Verifier(username, password, salt);
     
     // Send registration data to server
     const createEndpoint = getApiEndpoint('ACCOUNT_CREATE');
