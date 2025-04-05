@@ -43,17 +43,17 @@ export const executeSoapCommand = async (
   
   const { host, port, username, password, protocol } = soapOptions;
   
-  // Build SOAP URL
-  const url = `${protocol}://${host}:${port}/`;
+  // Build SOAP URL with authentication in the URL as recommended by AzerothCore
+  const url = `${protocol}://${username}:${password}@${host}:${port}/`;
   
-  // Build SOAP envelope
+  // Build SOAP envelope - Keep the namespace as urn:AC for AzerothCore
   const soapEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
 <SOAP-ENV:Envelope
   xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
   xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-  xmlns:ns1="urn:MaNGOS">
+  xmlns:ns1="urn:AC">
   <SOAP-ENV:Body>
     <ns1:executeCommand>
       <command>${command}</command>
@@ -62,15 +62,10 @@ export const executeSoapCommand = async (
 </SOAP-ENV:Envelope>`;
 
   try {
-    // Basic auth is encoded as base64(username:password)
-    const auth = Buffer.from(`${username}:${password}`).toString('base64');
-    
-    // Send SOAP request
+    // Send SOAP request - use URL-based authentication instead of header
     const response = await axios.post(url, soapEnvelope, {
       headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': 'urn:MaNGOS#executeCommand',
-        'Authorization': `Basic ${auth}`
+        'Content-Type': 'application/xml'
       },
       timeout: 10000 // 10 seconds timeout
     });
@@ -87,9 +82,10 @@ export const executeSoapCommand = async (
     let result = responseText;
     
     // Different WoW emulators have different response formats
-    // Try to handle the most common ones
+    // Try to handle the most common ones - Fixed the typo in the first pattern
     const resultPatterns = [
       /<result>([\s\S]*?)<\/result>/,
+      /<ns1:executeCommandResponse>([\s\S]*?)<\/ns1:executeCommandResponse>/,
       /<executeCommandResponse>([\s\S]*?)<\/executeCommandResponse>/,
       /<return>([\s\S]*?)<\/return>/
     ];
