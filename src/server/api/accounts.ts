@@ -3,7 +3,7 @@ import mysql from 'mysql2/promise';
 import { getConfigValue, clearConfigCache } from '../../services/configService';
 import { Router } from 'express';
 // import { pool } from '../../services/database';
-import { RowDataPacket } from 'mysql2';
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import crypto from 'crypto';
 
 const router = Router();
@@ -123,6 +123,55 @@ router.get('/check', async (req, res) => {
 });
 
 /**
+ * Check if an email exists
+ * @route GET /api/account/check-email
+ */
+router.get('/check-email', async (req, res) => {
+  console.log('Received email check request:', req.query);
+  const { email } = req.query;
+  
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({
+      success: false,
+      message: 'Email is required and must be a string',
+    });
+  }
+  
+  let connection;
+  try {
+    const currentPool = await getPool();
+    connection = await currentPool.getConnection();
+    
+    const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+    console.log(`Checking email '${email}' in table: ${accountTable}`);
+    
+    const [rows] = await connection.execute(
+      `SELECT id FROM ${accountTable} WHERE email = ?`,
+      [email]
+    );
+    
+    const exists = Array.isArray(rows) && rows.length > 0;
+    console.log(`Email '${email}' exists:`, exists);
+    
+    res.json({
+      success: true,
+      exists,
+    });
+  } catch (error) {
+    console.error('Database error checking email:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while checking email',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
+/**
  * Convert language code to AzerothCore locale ID
  */
 const getLocaleId = (language: string = 'en'): number => {
@@ -164,6 +213,204 @@ router.post('/create', async (req, res) => {
     
     // Get account table name from config
     const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+    
+    // Check if we're processing a Battle.net account
+    const isBattleNetRequest = req.body.isBattleNet || req.body.bnet_hash;
+    
+    if (isBattleNetRequest) {
+      console.log('Processing Battle.net account creation');
+      
+      // First, check if the Battle.net accounts table exists
+      const [bnetTables] = await connection.execute(
+        `SHOW TABLES LIKE 'battlenet_accounts'`
+      );
+      
+      if (!Array.isArray(bnetTables) || bnetTables.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Battle.net accounts are not supported on this server"
+        });
+      }
+      
+      // Detect the authentication method based on the request payload
+      const isSRP6Request = req.body.salt && req.body.verifier;
+      const isLegacyRequest = req.body.bnet_hash || (!isSRP6Request && req.body.password);
+      const srp6Version = req.body.srp_version || 0;
+      
+      console.log(`Battle.net request type: ${isSRP6Request ? `SRP6 v${srp6Version}` : isLegacyRequest ? 'Legacy' : 'Unknown'}`);
+      
+      if (isLegacyRequest) {
+        // Legacy authentication for Battle.net accounts
+        const { email, password, bnet_hash, expansion = 2 } = req.body;
+        
+        if (!email) {
+          return res.status(400).json({
+            success: false,
+            message: 'Email is required for Battle.net accounts'
+          });
+        }
+        
+        // Calculate the SHA256 hash for Battle.net if it wasn't provided
+        let battleNetHash = bnet_hash;
+        if (!battleNetHash && password) {
+          // SHA256(UPPER(email):UPPER(password)) reversed as hex
+          const hash = crypto.createHash('sha256')
+            .update(`${email.toUpperCase()}:${password.toUpperCase()}`)
+            .digest('hex')
+            .toUpperCase();
+            
+          // Reverse the binary representation of the hash
+          const binaryHash = Buffer.from(hash, 'hex');
+          const reversedBinary = Buffer.from(Array.from(binaryHash).reverse());
+          battleNetHash = reversedBinary.toString('hex').toUpperCase();
+        }
+        
+        console.log(`Creating Battle.net account for '${email}' using legacy SHA256 authentication`);
+        
+        // Insert Battle.net account
+        const [result] = await connection.execute<ResultSetHeader>(
+          `INSERT INTO battlenet_accounts 
+           (email, sha_pass_hash) 
+           VALUES (?, ?)`,
+          [email.toUpperCase(), battleNetHash]
+        );
+        
+        const bnetAccountId = result.insertId;
+        
+        // Now create the game account linked to this Battle.net account
+        const gameAccountName = `${bnetAccountId}#1`;
+        
+        // For the game account, calculate SHA1 hash
+        const gameAccountHash = crypto.createHash('sha1')
+          .update(`${gameAccountName.toUpperCase()}:${password.toUpperCase()}`)
+          .digest('hex')
+          .toUpperCase();
+        
+        await connection.execute(
+          `INSERT INTO ${accountTable} 
+           (username, sha_pass_hash, email, expansion, battlenet_account, battlenet_index) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [gameAccountName.toUpperCase(), gameAccountHash, email.toUpperCase(), expansion, bnetAccountId, 1]
+        );
+      } else if (isSRP6Request) {
+        // SRP6 authentication for Battle.net accounts
+        const { 
+          email, 
+          salt, 
+          verifier, 
+          srp_version = 0,
+          expansion = 2
+        } = req.body;
+        
+        if (!email || !salt || !verifier) {
+          return res.status(400).json({
+            success: false,
+            message: 'Email, salt, and verifier are required for Battle.net SRP6 authentication'
+          });
+        }
+        
+        console.log(`Creating Battle.net account for '${email}' using SRP6 v${srp_version} authentication`);
+        
+        // Check which fields to use for salt and verifier
+        const saltField = getConfigValue<string>('DB_FIELD_SALT', 'salt');
+        const verifierField = getConfigValue<string>('DB_FIELD_VERIFIER', 'verifier');
+        
+        // Insert Battle.net account with SRP6
+        const [result] = await connection.execute<ResultSetHeader>(
+          `INSERT INTO battlenet_accounts 
+           (email, srp_version, ${saltField}, ${verifierField}) 
+           VALUES (?, ?, ?, ?)`,
+          [
+            email.toUpperCase(), 
+            srp_version,
+            Buffer.from(salt, 'base64'), 
+            Buffer.from(verifier, 'base64')
+          ]
+        );
+        
+        const bnetAccountId = result.insertId;
+        
+        // Now create the game account linked to this Battle.net account
+        const gameAccountName = `${bnetAccountId}#1`;
+        
+        // For the game account, we need to calculate a new verifier
+        // We'll just use the same password but with the game account username
+        // In a real implementation, we might need to fetch this differently
+        const gameAccountSalt = crypto.randomBytes(32);
+        
+        // For passwords longer than 16 characters in SRP6v2, we truncate to 16
+        const effectivePassword = srp_version === 2 && req.body.password && req.body.password.length > 16
+          ? req.body.password.slice(0, 16)
+          : req.body.password;
+        
+        // If we have a password, calculate the verifier for the game account
+        if (effectivePassword) {
+          const h1 = crypto.createHash('sha1')
+            .update(`${gameAccountName.toUpperCase()}:${effectivePassword.toUpperCase()}`)
+            .digest('hex')
+            .toUpperCase();
+            
+          const saltHex = gameAccountSalt.toString('hex').toUpperCase();
+          const h2 = crypto.createHash('sha1')
+            .update(saltHex + h1)
+            .digest('hex')
+            .toUpperCase();
+            
+          const x = BigInt('0x' + h2);
+          const N_BIGINT = BigInt('0x' + N_HEX);
+          const g_BIGINT = BigInt(g_HEX);
+          const v = modPow(g_BIGINT, x, N_BIGINT);
+          
+          const vHex = v.toString(16).padStart(64, '0');
+          const gameAccountVerifier = Buffer.from(vHex, 'hex');
+          
+          // Insert the game account
+          await connection.execute(
+            `INSERT INTO ${accountTable} 
+             (username, ${saltField}, ${verifierField}, email, expansion, battlenet_account, battlenet_index) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              gameAccountName.toUpperCase(),
+              gameAccountSalt,
+              gameAccountVerifier,
+              email.toUpperCase(),
+              expansion,
+              bnetAccountId,
+              1
+            ]
+          );
+        } else {
+          // If we don't have a password, create the account with empty verifier
+          // This is not secure but matches the behavior of some implementations
+          await connection.execute(
+            `INSERT INTO ${accountTable} 
+             (username, email, expansion, battlenet_account, battlenet_index) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              gameAccountName.toUpperCase(),
+              email.toUpperCase(),
+              expansion,
+              bnetAccountId,
+              1
+            ]
+          );
+        }
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid Battle.net account registration request format'
+        });
+      }
+      
+      console.log('Battle.net account and game account created successfully');
+      res.json({
+        success: true,
+        message: 'Battle.net account created successfully'
+      });
+      return;
+    }
+    
+    // From here on, handle regular account creation (non-Battle.net)
     
     // Detect the authentication method based on the request payload
     const isSRP6Request = req.body.salt && req.body.verifier;

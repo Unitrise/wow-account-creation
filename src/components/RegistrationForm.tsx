@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Paper, 
@@ -6,12 +6,14 @@ import {
   Button, 
   Typography, 
   Alert,
+  FormControlLabel,
+  Switch,
   // useTheme,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { styled } from '@mui/material/styles';
 import { useRegistrationStore } from '../store/registrationStore.js';
-import { registerAccount } from '../services/authService.js';  // Direct import
+import { registerAccount, checkUsername, checkEmail } from '../services/authService.js';  // Direct import
 import { getConfigValue } from '../services/configService.js';
 import { theme as appTheme } from '../theme/theme.js';
 
@@ -80,12 +82,69 @@ export const RegistrationForm: React.FC = () => {
     setLoading 
   } = useRegistrationStore();
 
+  // Additional states
+  const [isBattleNet, setIsBattleNet] = useState(false);
+  const [usernameExists, setUsernameExists] = useState(false);
+  const [emailExists, setEmailExists] = useState(false);
+
   // Get server name from config for form title
   const serverName = getConfigValue<string>('SERVER_NAME', 'WoW Israel');
+  const srp6Support = getConfigValue<boolean>('SRP6_SUPPORT', false);
+  const srp6Version = getConfigValue<number>('SRP6_VERSION', 0);
+  const multipleEmailUse = getConfigValue<boolean>('MULTIPLE_EMAIL_USE', false);
+
+  // Effect to check username existence after typing stops
+  useEffect(() => {
+    if (!username || username.length < 2 || isBattleNet) return;
+    
+    const timer = setTimeout(async () => {
+      const exists = await checkUsername(username);
+      setUsernameExists(exists);
+      if (exists) {
+        setError(t('registration.errors.usernameExists'));
+      } else if (error === t('registration.errors.usernameExists')) {
+        setError('');
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [username, isBattleNet, error, t, setError]);
+
+  // Effect to check email existence after typing stops
+  useEffect(() => {
+    if (!email || !email.includes('@')) return;
+    
+    const timer = setTimeout(async () => {
+      const exists = await checkEmail(email);
+      setEmailExists(exists);
+      if (exists && !multipleEmailUse) {
+        setError(t('registration.errors.emailExists'));
+      } else if (error === t('registration.errors.emailExists')) {
+        setError('');
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [email, error, multipleEmailUse, t, setError]);
+
+  // Password validation based on SRP6 version
+  const validatePassword = (password: string): boolean => {
+    if (srp6Support && srp6Version === 2) {
+      return password.length >= 4 && password.length <= 128;
+    } else {
+      return password.length >= 4 && password.length <= 16;
+    }
+  };
+
+  // Username validation
+  const validateUsername = (username: string): boolean => {
+    if (isBattleNet) return true; // No username for Battle.net accounts
+    return username.length >= 2 && username.length <= 16 && /^[0-9A-Za-z-_]+$/.test(username);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted with:', { username, email });
+    console.log('Form submitted with:', { username: isBattleNet ? email : username, email, isBattleNet });
     
     // Check if account creation is enabled
     if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
@@ -94,17 +153,39 @@ export const RegistrationForm: React.FC = () => {
     }
     
     // Basic validation
-    if (!username || !email || !password || !confirmPassword) {
+    if ((isBattleNet && (!email || !password || !confirmPassword)) || 
+        (!isBattleNet && (!username || !email || !password || !confirmPassword))) {
       setError(t('registration.errors.missingFields'));
       return;
     }
     
-    if (username.length < 3 || username.length > 32) {
-      setError(t('registration.errors.usernameLength'));
+    // Username validation for non-Battle.net accounts
+    if (!isBattleNet) {
+      if (!validateUsername(username)) {
+        setError(t('registration.errors.usernameFormat'));
+        return;
+      }
+
+      if (usernameExists) {
+        setError(t('registration.errors.usernameExists'));
+        return;
+      }
+    }
+    
+    // Email validation
+    if (!email.includes('@')) {
+      setError(t('registration.errors.invalidEmail'));
       return;
     }
     
-    if (password.length < 8) {
+    // Check email existence if not allowing multiple accounts with same email
+    if (emailExists && !multipleEmailUse) {
+      setError(t('registration.errors.emailExists'));
+      return;
+    }
+    
+    // Password validation
+    if (!validatePassword(password)) {
       setError(t('registration.errors.passwordLength'));
       return;
     }
@@ -120,10 +201,12 @@ export const RegistrationForm: React.FC = () => {
       
       console.log('Calling registerAccount...');
       const result = await registerAccount({ 
-        username, 
+        username: isBattleNet ? '' : username, 
         email, 
         password,
-        language: 'en'
+        isBattleNet,
+        language: 'en',
+        expansion: getConfigValue<number>('EXPANSION', 2)
       });
       
       console.log('Registration result:', result);
@@ -134,6 +217,7 @@ export const RegistrationForm: React.FC = () => {
         setEmail('');
         setPassword('');
         setConfirmPassword('');
+        setIsBattleNet(false);
         
         // Show success message
         alert(t('registration.success', { serverName }));
@@ -156,17 +240,40 @@ export const RegistrationForm: React.FC = () => {
       
       <form onSubmit={handleSubmit} noValidate>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <StyledTextField
-            label={t('registration.username')}
-            variant="outlined"
-            fullWidth
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            error={!!error && !username}
-            helperText={error && !username ? error : ''}
-            disabled={isLoading}
-            required
+          {/* Battle.net toggle switch */}
+          <FormControlLabel
+            control={
+              <Switch 
+                checked={isBattleNet}
+                onChange={(e) => setIsBattleNet(e.target.checked)}
+                disabled={isLoading}
+              />
+            }
+            label={t('registration.battleNetAccount')}
           />
+          
+          {/* Username field - only shown for non-Battle.net accounts */}
+          {!isBattleNet && (
+            <StyledTextField
+              label={t('registration.username')}
+              variant="outlined"
+              fullWidth
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              error={!!error && (!username || !validateUsername(username) || usernameExists)}
+              helperText={
+                error && !username 
+                  ? error 
+                  : usernameExists 
+                    ? t('registration.errors.usernameExists')
+                    : !validateUsername(username) && username
+                      ? t('registration.errors.usernameFormat')
+                      : ''
+              }
+              disabled={isLoading}
+              required
+            />
+          )}
           
           <StyledTextField
             label={t('registration.email')}
@@ -175,8 +282,14 @@ export const RegistrationForm: React.FC = () => {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            error={!!error && !email}
-            helperText={error && !email ? error : ''}
+            error={!!error && (!email || emailExists && !multipleEmailUse)}
+            helperText={
+              error && !email 
+                ? error 
+                : emailExists && !multipleEmailUse
+                  ? t('registration.errors.emailExists')
+                  : ''
+            }
             disabled={isLoading}
             required
           />
@@ -188,8 +301,14 @@ export const RegistrationForm: React.FC = () => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            error={!!error && !password}
-            helperText={error && !password ? error : ''}
+            error={!!error && (!password || !validatePassword(password))}
+            helperText={
+              error && !password 
+                ? error 
+                : !validatePassword(password) && password
+                  ? t('registration.errors.passwordLength')
+                  : ''
+            }
             disabled={isLoading}
             required
           />
