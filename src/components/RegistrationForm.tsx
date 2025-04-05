@@ -11,6 +11,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { styled } from '@mui/material/styles';
 import { useRegistrationStore } from '../store/registrationStore.js';
+import { registerAccount } from '../services/authService.js';  // Direct import
 import { getConfigValue } from '../services/configService.js';
 import { theme as appTheme } from '../theme/theme.js';
 
@@ -84,7 +85,7 @@ export const RegistrationForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted');
+    console.log('Form submitted with:', { username, email });
     
     // Check if account creation is enabled
     if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
@@ -117,13 +118,15 @@ export const RegistrationForm: React.FC = () => {
       setLoading(true);
       setError('');
       
-      const { registerAccount } = await import('../services/authService');
+      console.log('Calling registerAccount...');
       const result = await registerAccount({ 
         username, 
         email, 
         password,
-        language: 'en'  // Default to English
+        language: 'en'
       });
+      
+      console.log('Registration result:', result);
       
       if (result.success) {
         // Clear form
@@ -151,7 +154,7 @@ export const RegistrationForm: React.FC = () => {
         {t('registration.title', { serverName })}
       </FormTitle>
       
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} noValidate>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <StyledTextField
             label={t('registration.username')}
@@ -162,6 +165,7 @@ export const RegistrationForm: React.FC = () => {
             error={!!error && !username}
             helperText={error && !username ? error : ''}
             disabled={isLoading}
+            required
           />
           
           <StyledTextField
@@ -174,6 +178,7 @@ export const RegistrationForm: React.FC = () => {
             error={!!error && !email}
             helperText={error && !email ? error : ''}
             disabled={isLoading}
+            required
           />
           
           <StyledTextField
@@ -186,6 +191,7 @@ export const RegistrationForm: React.FC = () => {
             error={!!error && !password}
             helperText={error && !password ? error : ''}
             disabled={isLoading}
+            required
           />
           
           <StyledTextField
@@ -198,6 +204,7 @@ export const RegistrationForm: React.FC = () => {
             error={!!error && password !== confirmPassword}
             helperText={error && password !== confirmPassword ? error : ''}
             disabled={isLoading}
+            required
           />
           
           {error && (
