@@ -18,6 +18,11 @@ const getDbConfig = () => {
     user: getConfigValue<string>('DB_USER', 'root'),
     password: getConfigValue<string>('DB_PASSWORD', 'root'),
     database: getConfigValue<string>('DB_NAME', 'acore_auth'),
+    // Add connection timeout and other options
+    connectTimeout: 10000, // 10 seconds
+    connectionLimit: 10,
+    waitForConnections: true,
+    queueLimit: 0
   };
   console.log(`Database config: ${config.host}:${config.port}/${config.database} (user: ${config.user})`);
   return config;
@@ -28,18 +33,40 @@ const getDbConfig = () => {
  */
 const createPool = () => {
   const dbConfig = getDbConfig();
-  return mysql.createPool(dbConfig);
+  const newPool = mysql.createPool(dbConfig);
+  
+  // Test the connection
+  newPool.getConnection()
+    .then(connection => {
+      console.log('Database connection test successful');
+      connection.release();
+    })
+    .catch(err => {
+      console.error('Database connection test failed:', err);
+    });
+    
+  return newPool;
 };
 
 /**
- * Get the pool
+ * Get the pool with connection check
  */
 let pool: mysql.Pool | null = null;
-const getPool = () => {
+const getPool = async () => {
   if (!pool) {
     pool = createPool();
   }
-  return pool;
+  
+  try {
+    // Test if pool is still working
+    const connection = await pool.getConnection();
+    connection.release();
+    return pool;
+  } catch (error) {
+    console.error('Pool connection failed, creating new pool:', error);
+    pool = createPool();
+    return pool;
+  }
 };
 
 /**
@@ -47,42 +74,47 @@ const getPool = () => {
  * @route GET /api/account/check
  */
 router.get('/check', async (req, res) => {
+  console.log('Received username check request:', req.query);
   const { username } = req.query;
   
-  if (!username) {
+  if (!username || typeof username !== 'string') {
     return res.status(400).json({
       success: false,
-      message: 'Username is required',
+      message: 'Username is required and must be a string',
     });
   }
   
+  let connection;
   try {
-    const connection = await getPool().getConnection();
+    const currentPool = await getPool();
+    connection = await currentPool.getConnection();
     
-    try {
-      const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
-      console.log(`Checking username in table: ${accountTable}`);
-      
-      const [rows] = await connection.execute(
-        `SELECT id FROM ${accountTable} WHERE username = ?`,
-        [username]
-      );
-      
-      const exists = Array.isArray(rows) && rows.length > 0;
-      
-      res.json({
-        success: true,
-        exists,
-      });
-    } finally {
-      connection.release();
-    }
+    const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
+    console.log(`Checking username '${username}' in table: ${accountTable}`);
+    
+    const [rows] = await connection.execute(
+      `SELECT id FROM ${accountTable} WHERE username = ?`,
+      [username]
+    );
+    
+    const exists = Array.isArray(rows) && rows.length > 0;
+    console.log(`Username '${username}' exists:`, exists);
+    
+    res.json({
+      success: true,
+      exists,
+    });
   } catch (error) {
     console.error('Database error checking username:', error);
     res.status(500).json({
       success: false,
       message: 'Server error while checking username',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 });
 
@@ -125,7 +157,8 @@ router.post('/create', async (req, res) => {
   }
   
   try {
-    const connection = await getPool().getConnection();
+    const pool = await getPool();
+    const connection = await pool.getConnection();
     
     try {
       const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');

@@ -189,11 +189,29 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
 export const checkUsernameExists = async (username: string): Promise<boolean> => {
   try {
     const checkEndpoint = getApiEndpoint('ACCOUNT_CHECK');
-    const response = await axios.get(`${getBaseUrl()}${checkEndpoint}?username=${encodeURIComponent(username)}`);
-    return response.data.exists;
+    const response = await axios.get(
+      `${getBaseUrl()}${checkEndpoint}?username=${encodeURIComponent(username)}`,
+      {
+        timeout: 5000, // 5 second timeout
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      }
+    );
+    
+    if (response.data && response.data.success) {
+      return response.data.exists;
+    }
+    
+    console.error('Invalid response format:', response.data);
+    return true; // Assume username exists in case of invalid response
   } catch (error: any) {
     console.error('Username check error:', error);
-    // Assume username exists in case of error to prevent creating duplicate accounts
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Connection timeout while checking username. Please try again.');
+    }
+    // Assume username exists in case of error to prevent duplicate accounts
     return true;
   }
 };
