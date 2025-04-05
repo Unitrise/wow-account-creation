@@ -4,6 +4,7 @@ import { getConfigValue, clearConfigCache } from '../../services/configService';
 import { Router } from 'express';
 // import { pool } from '../../services/database';
 import { RowDataPacket } from 'mysql2';
+import crypto from 'crypto';
 
 const router = Router();
 
@@ -150,12 +151,22 @@ const getLocaleId = (language: string = 'en'): number => {
  */
 router.post('/create', async (req, res) => {
   console.log('Received account creation request:', req.body);
-  const { username, sha_pass_hash, email, expansion = 2 } = req.body;
+  const { 
+    username, 
+    // For SRP6 we need salt and verifier instead of sha_pass_hash
+    salt, 
+    verifier, 
+    email, 
+    reg_mail = email,
+    expansion = 2,
+    locale = 0,
+    os = 'Win' 
+  } = req.body;
   
-  if (!username || !sha_pass_hash || !email) {
+  if (!username || !salt || !verifier || !email) {
     return res.status(400).json({
       success: false,
-      message: 'Username, password hash, and email are required'
+      message: 'Username, salt, verifier, and email are required'
     });
   }
   
@@ -167,12 +178,21 @@ router.post('/create', async (req, res) => {
     const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
     console.log(`Creating account '${username}' in table: ${accountTable}`);
     
-    // Insert account using WoW's standard format
+    // Insert account using AzerothCore's table structure
     const [result] = await connection.execute(
       `INSERT INTO ${accountTable} 
-       (username, sha_pass_hash, email, reg_mail, expansion, joindate) 
-       VALUES (?, ?, ?, ?, ?, NOW())`,
-      [username, sha_pass_hash, email, email, expansion]
+       (username, salt, verifier, email, reg_mail, expansion, joindate, locale, os) 
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+      [
+        username, 
+        Buffer.from(salt, 'base64'), // Convert base64 string to binary buffer
+        Buffer.from(verifier, 'base64'), // Convert base64 string to binary buffer
+        email, 
+        reg_mail, 
+        expansion,
+        locale,
+        os
+      ]
     );
 
     console.log('Account created successfully');
@@ -197,18 +217,22 @@ router.post('/create', async (req, res) => {
   }
 });
 
+// Constants for WoW's SRP6
+const N_HEX = '894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7';
+const g_HEX = '7';
+
 /**
  * Login account
  * @route POST /api/auth/login
  */
 router.post('/login', async (req, res) => {
   console.log('Received login request');
-  const { username, sha_pass_hash } = req.body;
+  const { username, password } = req.body;
   
-  if (!username || !sha_pass_hash) {
+  if (!username || !password) {
     return res.status(400).json({
       success: false,
-      message: 'Username and password hash are required'
+      message: 'Username and password are required'
     });
   }
   
@@ -220,22 +244,81 @@ router.post('/login', async (req, res) => {
     const accountTable = getConfigValue<string>('DB_TABLE_ACCOUNT', 'account');
     console.log(`Verifying login for '${username}' in table: ${accountTable}`);
     
+    // First get the account details including salt and verifier
     const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT id FROM ${accountTable} WHERE username = ? AND sha_pass_hash = ?`,
-      [username, sha_pass_hash]
+      `SELECT id, username, salt, verifier FROM ${accountTable} WHERE username = ?`,
+      [username.toUpperCase()]
     );
 
-    if (rows.length > 0) {
+    if (!rows || rows.length === 0) {
+      console.log('Login failed: Account not found');
+      return res.json({ 
+        success: false, 
+        message: 'Invalid username or password' 
+      });
+    }
+
+    const account = rows[0];
+    
+    // For simplicity in a web application, we're using a direct login approach
+    // This is not the full SRP6 protocol used by the game client
+    
+    // Step 1: Get the stored salt
+    const salt = account.salt; // This is a binary buffer
+    
+    // Step 2: Calculate h1 = SHA1(username:password)
+    const h1 = crypto.createHash('sha1')
+      .update(`${username.toUpperCase()}:${password.toUpperCase()}`)
+      .digest('hex')
+      .toUpperCase();
+    
+    // Step 3: Calculate h2 = SHA1(salt | h1)
+    const saltHex = salt.toString('hex').toUpperCase();
+    const h2 = crypto.createHash('sha1')
+      .update(saltHex + h1)
+      .digest('hex')
+      .toUpperCase();
+    
+    // Step 4: Convert h2 to a BigInteger
+    const x = BigInt('0x' + h2);
+    
+    // Step 5: Calculate v = g^x % N
+    const N_BIGINT = BigInt('0x' + N_HEX);
+    const g_BIGINT = BigInt(g_HEX);
+    const v = modPow(g_BIGINT, x, N_BIGINT);
+    
+    // Step 6: Convert v to a byte array and compare with stored verifier
+    const vHex = v.toString(16).padStart(64, '0');
+    const calculatedVerifier = Buffer.from(vHex, 'hex');
+    const storedVerifier = account.verifier; // This is a binary buffer
+    
+    // Compare calculated verifier with stored verifier
+    let isPasswordValid = false;
+    try {
+      // For more robust comparison, use a constant-time comparison function
+      isPasswordValid = crypto.timingSafeEqual(calculatedVerifier, storedVerifier);
+    } catch (e) {
+      console.error('Verifier comparison error:', e);
+      isPasswordValid = false;
+    }
+    
+    if (isPasswordValid) {
       // Update last login
       await connection.execute(
         `UPDATE ${accountTable} SET last_login = NOW(), last_ip = ? WHERE id = ?`,
-        [req.ip, rows[0].id]
+        [req.ip, account.id]
       );
 
       console.log('Login successful');
       res.json({ success: true });
     } else {
-      console.log('Login failed: Invalid credentials');
+      // Update failed logins count
+      await connection.execute(
+        `UPDATE ${accountTable} SET failed_logins = failed_logins + 1, last_attempt_ip = ? WHERE id = ?`,
+        [req.ip, account.id]
+      );
+      
+      console.log('Login failed: Invalid password');
       res.json({ 
         success: false, 
         message: 'Invalid username or password' 
@@ -255,5 +338,23 @@ router.post('/login', async (req, res) => {
     }
   }
 });
+
+/**
+ * Helper function for modular exponentiation
+ * Calculates (base^exponent) % modulus
+ */
+function modPow(base: bigint, exponent: bigint, modulus: bigint): bigint {
+  if (modulus === 1n) return 0n;
+  let result = 1n;
+  base = base % modulus;
+  while (exponent > 0n) {
+    if (exponent % 2n === 1n) {
+      result = (result * base) % modulus;
+    }
+    exponent = exponent >> 1n;
+    base = (base * base) % modulus;
+  }
+  return result;
+}
 
 export default router; 
