@@ -30,6 +30,23 @@ if not exist package.json (
     exit /b 1
 )
 
+:: Check for and kill any existing processes using port 3000
+echo Checking for existing processes using port 3000...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000') do (
+    echo Found process using port 3000 with PID: %%a
+    echo Attempting to terminate process...
+    taskkill /F /PID %%a
+    if %errorLevel% neq 0 (
+        echo Failed to terminate process. Please manually close any applications using port 3000.
+        echo You can use Task Manager to find and end processes using port 3000.
+        pause
+        exit /b 1
+    ) else (
+        echo Process terminated successfully.
+    )
+)
+echo.
+
 :: Install dependencies (including PM2 locally)
 echo Installing dependencies...
 call npm install
