@@ -10,13 +10,11 @@ if (typeof window !== 'undefined') {
   window.Buffer = window.Buffer || Buffer;
 }
 
-// Constants for AzerothCore SRP6 calculation
-// These match the values used by AzerothCore
+// Constants for WoW's SRP6
 const N_HEX = '894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7';
 const g_HEX = '7';
 const N = new BigInteger(N_HEX, 16);
 const g = new BigInteger(g_HEX, 16);
-// const k = new BigInteger('3', 10);
 
 // Interfaces
 export interface AccountData {
@@ -38,61 +36,54 @@ interface ErrorResponse {
 }
 
 /**
- * Wrapper for crypto-js SHA1
+ * Convert a string to binary buffer exactly as WoW does
  */
-function sha1(msg: string): string {
-  return Hex.stringify(SHA1(msg)).toUpperCase();
+function stringToBuffer(str: string): Buffer {
+    return Buffer.from(str, 'binary');
 }
 
 /**
- * Generate random bytes
+ * Convert hex string to binary buffer
  */
-function generateRandomBytes(size: number): Buffer {
-  const bytes = new Uint8Array(size);
-  for (let i = 0; i < size; i++) {
-    bytes[i] = Math.floor(Math.random() * 256);
-  }
-  return Buffer.from(bytes);
+function hexToBuffer(hex: string): Buffer {
+    return Buffer.from(hex, 'hex');
 }
 
 /**
- * Calculates the SRP6 verifier using AzerothCore's method
- * @param username - Account username
- * @param password - Account password
- * @param salt - Random salt as Buffer
- * @returns SRP6 verifier as a Buffer
+ * Calculate SHA1 hash and return binary buffer
  */
-function calculateSRP6Verifier(username: string, password: string, salt: Buffer): Buffer {
-  try {
-    console.log('Calculating SRP6 verifier...');
-    console.log('Input:', { username, saltLength: salt.length });
-    
-    // AzerothCore uses uppercase username and password for the identity calculation
-    const identity = (username.toUpperCase() + ':' + password.toUpperCase());
-    console.log('Identity string created');
-    
-    const h1 = sha1(identity);
-    console.log('H1 hash calculated:', h1);
-    
-    // Convert salt to hex string
-    const saltHex = salt.toString('hex').toUpperCase();
-    console.log('Salt hex:', saltHex);
-    
-    // Calculate x (H(s, H(I)))
-    const x = new BigInteger(sha1(saltHex + h1), 16);
-    console.log('X calculated');
-    
-    // Calculate v = g^x % N
-    const v = g.modPow(x, N);
-    console.log('Verifier calculated');
-    
-    // Convert v to a Buffer
-    const vHex = v.toString(16).padStart(64, '0');
-    return Buffer.from(vHex, 'hex');
-  } catch (error) {
-    console.error('Error in calculateSRP6Verifier:', error);
-    throw error;
-  }
+function sha1Binary(data: string | Buffer): Buffer {
+    const hash = SHA1(typeof data === 'string' ? data : data.toString('binary'));
+    return hexToBuffer(Hex.stringify(hash));
+}
+
+/**
+ * Calculate verifier using exact WoW protocol
+ */
+function calculateVerifier(username: string, password: string, salt: Buffer): Buffer {
+    try {
+        // 1. Convert username and password to uppercase
+        const upperUsername = username.toUpperCase();
+        const upperPassword = password.toUpperCase();
+
+        // 2. Concatenate username:password and calculate SHA1
+        const identity = `${upperUsername}:${upperPassword}`;
+        const h1 = sha1Binary(identity);
+
+        // 3. Concatenate salt and h1 and calculate SHA1
+        const combined = Buffer.concat([salt, h1]);
+        const x = new BigInteger(sha1Binary(combined).toString('hex'), 16);
+
+        // 4. Calculate v = g^x % N
+        const v = g.modPow(x, N);
+
+        // 5. Convert to 32-byte buffer (WoW expects exactly 32 bytes)
+        const vHex = v.toString(16).padStart(64, '0');
+        return hexToBuffer(vHex);
+    } catch (error) {
+        console.error('Error calculating verifier:', error);
+        throw error;
+    }
 }
 
 /**
@@ -110,140 +101,154 @@ const getApiEndpoint = (endpoint: string): string => {
 };
 
 /**
- * Registers a new account with AzerothCore SRP6 authentication
- * @param accountData - Account registration data
- * @returns Promise with registration result
+ * Register account with exact WoW protocol format
  */
 export const registerAccount = async (accountData: AccountData): Promise<RegisterResponse> => {
-  try {
-    console.log('Starting account registration process...');
-    
-    // Check if account creation is enabled
-    if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
-      console.log('Account creation is disabled');
-      return { success: false, message: 'Account creation is disabled in server configuration' };
-    }
-    
-    const { username, email, password, language = 'en' } = accountData;
-    
-    // Validate username and password
-    if (username.length < 3 || username.length > 32) {
-      console.log('Invalid username length');
-      return { success: false, message: 'Username must be between 3 and 32 characters' };
-    }
-    
-    if (password.length < 8) {
-      console.log('Invalid password length');
-      return { success: false, message: 'Password must be at least 8 characters' };
-    }
-    
-    // Check if email is required
-    if (getConfigValue<boolean>('ACCOUNT_REQUIRE_EMAIL', true) && (!email || !email.includes('@'))) {
-      console.log('Invalid email');
-      return { success: false, message: 'Valid email address is required' };
-    }
-    
-    // Check if username exists before continuing
-    console.log('Checking if username exists...');
     try {
-      const exists = await checkUsernameExists(username);
-      if (exists) {
-        console.log('Username already exists');
-        return { success: false, message: 'Username already exists' };
-      }
-    } catch (error) {
-      console.error('Error checking username existence:', error);
-    }
-    
-    console.log('Generating SRP6 authentication data...');
-    // Generate a random salt (32 bytes as required by AzerothCore)
-    const salt = generateRandomBytes(32);
-    console.log('Salt generated:', salt.length, 'bytes');
-    
-    // Calculate the verifier using SRP6
-    const verifier = calculateSRP6Verifier(username, password, salt);
-    console.log('Verifier generated:', verifier.length, 'bytes');
-    
-    // Get the API endpoint
-    const createEndpoint = getApiEndpoint('ACCOUNT_CREATE');
-    const baseUrl = getBaseUrl();
-    console.log('Sending registration request to:', `${baseUrl}${createEndpoint}`);
-    
-    // Send registration data to server
-    const response = await axios.post(
-      `${baseUrl}${createEndpoint}`,
-      {
-        username,
-        email,
-        salt: salt.toString('base64'),
-        verifier: verifier.toString('base64'),
-        expansion: getConfigValue<number>('ACCOUNT_DEFAULT_EXPANSION', 2),
-        language
-      },
-      {
-        timeout: 10000, // 10 second timeout
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+        const { username, email, password } = accountData;
+
+        // Generate 32-byte salt using crypto
+        const salt = Buffer.from(new Uint8Array(32));
+        window.crypto.getRandomValues(salt);
+
+        // Calculate verifier
+        const verifier = calculateVerifier(username, password, salt);
+
+        // Prepare registration data matching DB schema
+        const registrationData = {
+            username: username.toUpperCase(),
+            email: email.toLowerCase(),
+            reg_mail: email.toLowerCase(), // WoW stores registration email separately
+            salt: salt.toString('binary'),    // Store as binary(32)
+            verifier: verifier.toString('binary'), // Store as binary(32)
+            expansion: 2,
+            locale: 0,
+            os: 'Win',
+            locked: 0,
+            last_ip: '127.0.0.1',
+            failed_logins: 0,
+            online: 0,
+            totaltime: 0
+        };
+
+        const baseUrl = getConfigValue<string>('API_BASE_URL', 'http://localhost:3000');
+        const response = await axios.post(
+            `${baseUrl}/api/account/create`,
+            registrationData,
+            {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                transformRequest: [(data) => {
+                    // Convert binary data to base64 for transport
+                    return JSON.stringify({
+                        ...data,
+                        salt: Buffer.from(data.salt, 'binary').toString('base64'),
+                        verifier: Buffer.from(data.verifier, 'binary').toString('base64')
+                    });
+                }]
+            }
+        );
+
+        if (response.data.success) {
+            return {
+                success: true,
+                message: 'Account created successfully!',
+                accountId: response.data.accountId
+            };
         }
-      }
-    );
-    
-    console.log('Registration response:', response.data);
-    
-    if (response.data && response.data.success) {
-      return {
-        success: true,
-        message: 'Account created successfully! You can now log in to the game using your credentials.',
-        accountId: response.data.accountId
-      };
-    } else {
-      console.error('Registration failed:', response.data);
-      return {
-        success: false,
-        message: response.data.message || 'Unknown error occurred during account creation'
-      };
+
+        return {
+            success: false,
+            message: response.data.message || 'Failed to create account'
+        };
+
+    } catch (error: any) {
+        console.error('Registration error:', error);
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Server error during registration'
+        };
     }
-  } catch (error) {
-    console.error('Registration error:', error);
-    const axiosError = error as AxiosError<ErrorResponse>;
-    const errorMessage = axiosError.response?.data?.message || 'Server error during registration';
-    return { success: false, message: errorMessage };
-  }
 };
 
 /**
- * Checks if a username already exists
- * @param username - Username to check
- * @returns Promise with boolean result
+ * Login using WoW's SRP6 protocol
  */
-export const checkUsernameExists = async (username: string): Promise<boolean> => {
-  try {
-    const checkEndpoint = getApiEndpoint('ACCOUNT_CHECK');
-    const response = await axios.get(
-      `${getBaseUrl()}${checkEndpoint}?username=${encodeURIComponent(username)}`,
-      {
-        timeout: 5000, // 5 second timeout
-        headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
+export const loginAccount = async (username: string, password: string): Promise<boolean> => {
+    try {
+        const upperUsername = username.toUpperCase();
+        const upperPassword = password.toUpperCase();
+
+        // Calculate initial hash
+        const identity = `${upperUsername}:${upperPassword}`;
+        const h1 = sha1Binary(identity);
+
+        // Get challenge from server
+        const baseUrl = getConfigValue<string>('API_BASE_URL', 'http://localhost:3000');
+        const challengeResponse = await axios.post(`${baseUrl}/api/auth/challenge`, {
+            username: upperUsername
+        });
+
+        if (!challengeResponse.data.success) {
+            throw new Error(challengeResponse.data.message || 'Failed to get auth challenge');
         }
-      }
-    );
-    
-    if (response.data && response.data.success) {
-      return response.data.exists;
+
+        const { salt: saltBase64, B: serverPublicKey } = challengeResponse.data;
+        const salt = Buffer.from(saltBase64, 'base64');
+
+        // Calculate proof using WoW's exact method
+        const combined = Buffer.concat([salt, h1]);
+        const x = new BigInteger(sha1Binary(combined).toString('hex'), 16);
+        
+        // Generate client ephemeral
+        const a = new BigInteger(Buffer.from(window.crypto.getRandomValues(new Uint8Array(32))).toString('hex'), 16);
+        const A = g.modPow(a, N);
+
+        // Calculate session key
+        const u = new BigInteger(sha1Binary(A.toString(16) + serverPublicKey).toString('hex'), 16);
+        const S = new BigInteger(serverPublicKey, 16)
+            .subtract(g.modPow(x, N).multiply(new BigInteger('3', 16)))
+            .modPow(a.add(u.multiply(x)), N);
+
+        // Calculate proof
+        const sessionKey = sha1Binary(S.toString(16));
+        const proof = sha1Binary(Buffer.concat([
+            sha1Binary(N.toString(16)),
+            sha1Binary(g.toString(16)),
+            sha1Binary(upperUsername),
+            salt,
+            Buffer.from(A.toString(16), 'hex'),
+            Buffer.from(serverPublicKey, 'hex'),
+            sessionKey
+        ]));
+
+        // Send proof to server
+        const loginResponse = await axios.post(`${baseUrl}/api/auth/proof`, {
+            username: upperUsername,
+            A: A.toString(16),
+            M1: proof.toString('base64')
+        });
+
+        return loginResponse.data.success;
+
+    } catch (error) {
+        console.error('Login error:', error);
+        return false;
     }
-    
-    console.error('Invalid response format:', response.data);
-    return true; // Assume username exists in case of invalid response
-  } catch (error: any) {
+};
+
+/**
+ * Check if username exists
+ */
+export const checkUsername = async (username: string): Promise<boolean> => {
+  try {
+    const baseUrl = getConfigValue<string>('API_BASE_URL', 'http://localhost:3000');
+    const response = await axios.get(`${baseUrl}/api/account/check/${username.toUpperCase()}`);
+    return response.data.exists;
+  } catch (error) {
     console.error('Username check error:', error);
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('Connection timeout while checking username. Please try again.');
-    }
-    // Assume username exists in case of error to prevent duplicate accounts
-    return true;
+    return false;
   }
 };
 
@@ -252,11 +257,12 @@ export const checkUsernameExists = async (username: string): Promise<boolean> =>
  * Currently not used for web authentication but could be useful for game client
  */
 export const generateSessionKey = (): Buffer => {
-  return generateRandomBytes(40);
+  return Buffer.from(new Uint8Array(40));
 };
 
 export default {
   registerAccount,
-  checkUsernameExists,
+  loginAccount,
+  checkUsername,
   generateSessionKey
 }; 
