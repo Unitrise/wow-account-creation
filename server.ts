@@ -13,7 +13,7 @@ const config = loadConfig('config.cfg');
 console.log('Server configuration loaded:', config);
 
 const app = express();
-const PORT = getConfigValue<number>('PORT', 3000);
+const PORT = getConfigValue<number>('PORT', 80);
 
 // Middleware
 app.use(cors());
