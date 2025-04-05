@@ -5,6 +5,9 @@ import { Router } from 'express';
 // import { pool } from '../../services/database';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import crypto from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as soapService from '../../services/soap';
 
 const router = Router();
 
@@ -774,5 +777,154 @@ function modPow(base: bigint, exponent: bigint, modulus: bigint): bigint {
   }
   return result;
 }
+
+/**
+ * Create a new account using server console commands
+ * @route POST /api/account/create-with-command
+ */
+router.post('/create-with-command', async (req, res) => {
+  console.log('Received account creation request for command execution:', req.body);
+  
+  const { username, password, email, gmlevel = 0 } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username and password are required'
+    });
+  }
+  
+  // Get the world server command from config, or use default
+  const serverCommand = getConfigValue<string>('SERVER_COMMAND_PATH', 'worldserver.exe');
+  const serverConsolePort = getConfigValue<number>('SERVER_CONSOLE_PORT', 3443);
+  
+  try {
+    // Execute using telnet or SOAP based on what's available
+    // For this example, we'll use a direct command through a telnet/netcat client
+    // This code assumes you have socat, telnet, or netcat installed
+    
+    // Build the account creation command
+    // Format is usually: account create [username] [password] [email]
+    const createAccountCmd = `account create ${username} ${password}`;
+    // If email is provided, add it as well
+    const emailCmd = email ? `account set email ${username} ${email}` : '';
+    // If GM level is provided and not zero, set it
+    const gmLevelCmd = gmlevel > 0 ? `account set gmlevel ${username} ${gmlevel} -1` : '';
+    
+    // Combine commands into one string to send to the server
+    const commandsToRun = [createAccountCmd, emailCmd, gmLevelCmd].filter(cmd => cmd).join('\n');
+    
+    // Method 1: Using telnet/socat to connect to the server console
+    // If this is running on the same machine as the server, we can use a simpler approach
+    
+    const execPromise = promisify(exec);
+    
+    // Check if this is on the same machine as the server and try direct method
+    const isServerLocal = getConfigValue<boolean>('SERVER_IS_LOCAL', true);
+    
+    let commandOutput = '';
+    
+    if (isServerLocal) {
+      // On Windows, we might use the admin console by passing commands directly to the server
+      // Note: This approach requires that the server supports command-line arguments for commands
+      const result = await execPromise(`${serverCommand} --command="${createAccountCmd}"`);
+      commandOutput = result.stdout || result.stderr || 'Command executed but no output received';
+    } else {
+      // For remote server, use telnet/socat to connect to the remote admin console
+      // This assumes the server has a telnet console enabled on the specified port
+      const result = await execPromise(`echo "${commandsToRun}" | telnet localhost ${serverConsolePort}`);
+      commandOutput = result.stdout || result.stderr || 'Command executed but no output received';
+    }
+    
+    // Check for common error messages in the output
+    if (commandOutput.includes('Account with this name already exists') || 
+        commandOutput.toLowerCase().includes('already exists')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Account with this name already exists'
+      });
+    }
+    
+    if (commandOutput.toLowerCase().includes('error') || commandOutput.toLowerCase().includes('failed')) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to create account through console',
+        details: commandOutput
+      });
+    }
+    
+    console.log('Account created successfully through console');
+    console.log('Command output:', commandOutput);
+    
+    res.json({
+      success: true,
+      message: 'Account created successfully',
+      details: commandOutput
+    });
+  } catch (error: any) {
+    console.error('Error executing server command:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to execute server command',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Create a new account using server console commands via SOAP
+ * @route POST /api/account/create-with-soap
+ */
+router.post('/create-with-soap', async (req, res) => {
+  console.log('Received account creation request for SOAP execution:', req.body);
+  
+  const { username, password, email, gmlevel = 0, expansion = 2 } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username and password are required'
+    });
+  }
+  
+  try {
+    // Create account using SOAP
+    let result = await soapService.createAccount(username, password, email, expansion);
+    
+    // Set GM level if needed
+    if (gmlevel > 0) {
+      try {
+        const gmResult = await soapService.setGMLevel(username, gmlevel);
+        result += '\n' + gmResult;
+      } catch (gmError) {
+        console.warn('Failed to set GM level, but account was created:', gmError);
+      }
+    }
+    
+    console.log('Account created successfully via SOAP');
+    console.log('Result:', result);
+    
+    // Check for common error messages in the result
+    if (result.includes('Account already exists')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Account with this name already exists'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Account created successfully',
+      details: result
+    });
+  } catch (error: any) {
+    console.error('Error creating account via SOAP:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create account via SOAP',
+      details: error.message
+    });
+  }
+});
 
 export default router; 

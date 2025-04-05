@@ -356,8 +356,52 @@ export const loginAccount = async (username: string, password: string): Promise<
   }
 };
 
+/**
+ * Register account using direct server commands via SOAP
+ * This is more reliable than direct database manipulation
+ */
+export const registerAccountWithSoap = async (accountData: AccountData): Promise<RegisterResponse> => {
+  try {
+    const { username, email, password, expansion = 2 } = accountData;
+    
+    // Use the current window location as the base URL
+    const baseUrl = typeof window !== 'undefined' 
+      ? window.location.origin 
+      : process.env.API_BASE_URL || 'http://localhost:3000';
+      
+    console.log('Using API base URL for SOAP registration:', baseUrl);
+    
+    // Prepare registration data
+    const registrationData = {
+      username: username.toUpperCase(),
+      password: password,
+      email: email,
+      expansion: expansion
+    };
+    
+    // Send to soap endpoint
+    const response = await axios.post(
+      `${baseUrl}/api/account/create-with-soap`,
+      registrationData
+    );
+    
+    return {
+      success: response.data.success,
+      message: response.data.message || 'Account created successfully!',
+      accountId: response.data.accountId
+    };
+  } catch (error: any) {
+    console.error('SOAP Registration error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || 'Registration failed'
+    };
+  }
+};
+
 export default {
     registerAccount,
+    registerAccountWithSoap,
     loginAccount,
     checkUsername,
     checkEmail

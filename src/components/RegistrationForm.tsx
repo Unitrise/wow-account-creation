@@ -13,7 +13,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { styled } from '@mui/material/styles';
 import { useRegistrationStore } from '../store/registrationStore.js';
-import { registerAccount, checkUsername, checkEmail } from '../services/authService.js';  // Direct import
+import { registerAccount, registerAccountWithSoap, checkUsername, checkEmail } from '../services/authService.js';  // Direct import
 import { getConfigValue } from '../services/configService.js';
 import { theme as appTheme } from '../theme/theme.js';
 
@@ -199,15 +199,30 @@ export const RegistrationForm: React.FC = () => {
       setLoading(true);
       setError('');
       
-      console.log('Calling registerAccount...');
-      const result = await registerAccount({ 
+      // First try SOAP method for more reliable account creation
+      const useSoap = getConfigValue<boolean>('USE_SOAP_REGISTRATION', true);
+      
+      let accountData = { 
         username: isBattleNet ? '' : username, 
         email, 
         password,
         isBattleNet,
         language: 'en',
         expansion: getConfigValue<number>('EXPANSION', 2)
-      });
+      };
+      
+      console.log(`Using ${useSoap ? 'SOAP' : 'database'} method for account creation`);
+      
+      // Try SOAP first, fall back to database method if not enabled or fails
+      let result = useSoap 
+        ? await registerAccountWithSoap(accountData)
+        : await registerAccount(accountData);
+      
+      // If SOAP failed and we have database fallback enabled, try that
+      if (!result.success && useSoap && getConfigValue<boolean>('ENABLE_DB_FALLBACK', true)) {
+        console.log('SOAP registration failed, falling back to database method');
+        result = await registerAccount(accountData);
+      }
       
       console.log('Registration result:', result);
       
