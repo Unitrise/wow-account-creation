@@ -11,7 +11,6 @@ import {
 import { useTranslation } from 'react-i18next';
 import { styled } from '@mui/material/styles';
 import { useRegistrationStore } from '../store/registrationStore.js';
-import { registerUser } from '../services/api.js';
 import { getConfigValue } from '../services/configService.js';
 import { theme as appTheme } from '../theme/theme.js';
 
@@ -85,6 +84,7 @@ export const RegistrationForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Form submitted');
     
     // Check if account creation is enabled
     if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
@@ -117,13 +117,15 @@ export const RegistrationForm: React.FC = () => {
       setLoading(true);
       setError('');
       
-      const success = await registerUser({ 
+      const { registerAccount } = await import('../services/authService');
+      const result = await registerAccount({ 
         username, 
         email, 
-        password
+        password,
+        language: 'en'  // Default to English
       });
       
-      if (success) {
+      if (result.success) {
         // Clear form
         setUsername('');
         setEmail('');
@@ -133,7 +135,7 @@ export const RegistrationForm: React.FC = () => {
         // Show success message
         alert(t('registration.success', { serverName }));
       } else {
-        setError(t('registration.errors.registrationFailed'));
+        setError(result.message || t('registration.errors.registrationFailed'));
       }
     } catch (err) {
       console.error('Registration error:', err);
@@ -150,60 +152,60 @@ export const RegistrationForm: React.FC = () => {
       </FormTitle>
       
       <form onSubmit={handleSubmit}>
-        <StyledTextField
-          label={t('registration.username')}
-          variant="outlined"
-          fullWidth
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          error={!!error && !username}
-          helperText={error && !username ? error : ''}
-          disabled={isLoading}
-        />
-        
-        <StyledTextField
-          label={t('registration.email')}
-          variant="outlined"
-          fullWidth
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          error={!!error && !email}
-          helperText={error && !email ? error : ''}
-          disabled={isLoading}
-        />
-        
-        <StyledTextField
-          label={t('registration.password')}
-          variant="outlined"
-          fullWidth
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          error={!!error && !password}
-          helperText={error && !password ? error : ''}
-          disabled={isLoading}
-        />
-        
-        <StyledTextField
-          label={t('registration.confirmPassword')}
-          variant="outlined"
-          fullWidth
-          type="password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          error={!!error && password !== confirmPassword}
-          helperText={error && password !== confirmPassword ? error : ''}
-          disabled={isLoading}
-        />
-        
-        {error && (
-          <Alert severity="error" sx={{ mb: '2%' }}>
-            {error}
-          </Alert>
-        )}
-        
-        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <StyledTextField
+            label={t('registration.username')}
+            variant="outlined"
+            fullWidth
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            error={!!error && !username}
+            helperText={error && !username ? error : ''}
+            disabled={isLoading}
+          />
+          
+          <StyledTextField
+            label={t('registration.email')}
+            variant="outlined"
+            fullWidth
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            error={!!error && !email}
+            helperText={error && !email ? error : ''}
+            disabled={isLoading}
+          />
+          
+          <StyledTextField
+            label={t('registration.password')}
+            variant="outlined"
+            fullWidth
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            error={!!error && !password}
+            helperText={error && !password ? error : ''}
+            disabled={isLoading}
+          />
+          
+          <StyledTextField
+            label={t('registration.confirmPassword')}
+            variant="outlined"
+            fullWidth
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            error={!!error && password !== confirmPassword}
+            helperText={error && password !== confirmPassword ? error : ''}
+            disabled={isLoading}
+          />
+          
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          
           <SubmitButton
             type="submit"
             variant="contained"
