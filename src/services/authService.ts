@@ -2,6 +2,8 @@ import axios, { AxiosError } from 'axios';
 import { Buffer } from 'buffer';
 import { getConfigValue } from './configService.js';
 import { BigInteger } from 'jsbn';
+import SHA1 from 'crypto-js/sha1';
+import Hex from 'crypto-js/enc-hex';
 
 // Polyfill Buffer for browser environment
 if (typeof window !== 'undefined') {
@@ -36,34 +38,22 @@ interface ErrorResponse {
 }
 
 /**
- * Creates a SHA1 hash of the input using Web Crypto API
- * @param input - String to hash
- * @returns SHA1 hash as a hex string
+ * Wrapper for crypto-js SHA1
  */
-const sha1 = async (input: string): Promise<string> => {
-  // Convert string to Uint8Array
-  const encoder = new TextEncoder();
-  const data = encoder.encode(input);
-  
-  // Use Web Crypto API to hash
-  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
-  
-  // Convert to hex string
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  return hashHex.toUpperCase();
-};
+function sha1(msg: string): string {
+  return Hex.stringify(SHA1(msg)).toUpperCase();
+}
 
 /**
- * Generate random bytes using Web Crypto API
- * @param size - Number of bytes to generate
- * @returns Buffer with random bytes
+ * Generate random bytes
  */
-const randomBytes = (size: number): Buffer => {
-  const array = new Uint8Array(size);
-  crypto.getRandomValues(array);
-  return Buffer.from(array);
-};
+function generateRandomBytes(size: number): Buffer {
+  const bytes = new Uint8Array(size);
+  for (let i = 0; i < size; i++) {
+    bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Buffer.from(bytes);
+}
 
 /**
  * Calculates the SRP6 verifier using AzerothCore's method
@@ -72,24 +62,38 @@ const randomBytes = (size: number): Buffer => {
  * @param salt - Random salt as Buffer
  * @returns SRP6 verifier as a Buffer
  */
-const calculateSRP6Verifier = async (username: string, password: string, salt: Buffer): Promise<Buffer> => {
-  // AzerothCore uses uppercase username and password for the identity calculation
-  const identity = (username.toUpperCase() + ':' + password.toUpperCase());
-  const h1 = await sha1(identity);
-  
-  // Convert salt to hex string
-  const saltHex = salt.toString('hex').toUpperCase();
-  
-  // Calculate x (H(s, H(I)))
-  const x = new BigInteger(await sha1(saltHex + h1), 16);
-  
-  // Calculate v = g^x % N
-  const v = g.modPow(x, N);
-  
-  // Convert v to a Buffer
-  const vHex = v.toString(16).padStart(64, '0');
-  return Buffer.from(vHex, 'hex');
-};
+function calculateSRP6Verifier(username: string, password: string, salt: Buffer): Buffer {
+  try {
+    console.log('Calculating SRP6 verifier...');
+    console.log('Input:', { username, saltLength: salt.length });
+    
+    // AzerothCore uses uppercase username and password for the identity calculation
+    const identity = (username.toUpperCase() + ':' + password.toUpperCase());
+    console.log('Identity string created');
+    
+    const h1 = sha1(identity);
+    console.log('H1 hash calculated:', h1);
+    
+    // Convert salt to hex string
+    const saltHex = salt.toString('hex').toUpperCase();
+    console.log('Salt hex:', saltHex);
+    
+    // Calculate x (H(s, H(I)))
+    const x = new BigInteger(sha1(saltHex + h1), 16);
+    console.log('X calculated');
+    
+    // Calculate v = g^x % N
+    const v = g.modPow(x, N);
+    console.log('Verifier calculated');
+    
+    // Convert v to a Buffer
+    const vHex = v.toString(16).padStart(64, '0');
+    return Buffer.from(vHex, 'hex');
+  } catch (error) {
+    console.error('Error in calculateSRP6Verifier:', error);
+    throw error;
+  }
+}
 
 /**
  * Get base API URL from config
@@ -153,10 +157,12 @@ export const registerAccount = async (accountData: AccountData): Promise<Registe
     
     console.log('Generating SRP6 authentication data...');
     // Generate a random salt (32 bytes as required by AzerothCore)
-    const salt = randomBytes(32);
+    const salt = generateRandomBytes(32);
+    console.log('Salt generated:', salt.length, 'bytes');
     
     // Calculate the verifier using SRP6
-    const verifier = await calculateSRP6Verifier(username, password, salt);
+    const verifier = calculateSRP6Verifier(username, password, salt);
+    console.log('Verifier generated:', verifier.length, 'bytes');
     
     // Get the API endpoint
     const createEndpoint = getApiEndpoint('ACCOUNT_CREATE');
@@ -246,7 +252,7 @@ export const checkUsernameExists = async (username: string): Promise<boolean> =>
  * Currently not used for web authentication but could be useful for game client
  */
 export const generateSessionKey = (): Buffer => {
-  return randomBytes(40);
+  return generateRandomBytes(40);
 };
 
 export default {
