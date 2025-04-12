@@ -53,9 +53,26 @@
     "englishGuide": "How to Download and Install",
     "hebrewGuide": "איך להוריד ולהתקין",
     "downloadButton": "Download Client",
+    "infoMessage": "Make sure you have enough disk space (at least 20GB) before downloading the client.",
+    "downloadOptions": "Download Options",
+    "fullClient": "Full Client",
+    "recommended": "Recommended",
+    "fullClientDescription": "Complete game client with all necessary files. Download this if you are installing for the first time.",
+    "size": "Size",
+    "version": "Version",
+    "download": "Download",
+    "torrentDownload": "Torrent Download",
+    "torrentDescription": "Faster download for users with good internet connections. Requires a torrent client like uTorrent or BitTorrent.",
+    "downloadTorrent": "Download Torrent",
+    "installationGuide": "Installation Guide",
+    "helpText": "Having trouble? Join our Discord community for installation support.",
+    "discord": "Discord Support",
+    "viewInDrive": "View in Google Drive",
+    "googleDriveNote": "For large files, Google Drive may warn about virus scanning. Click \"Download anyway\" to proceed.",
+    "driveInstructions": "If you see a Google Drive message about virus scanning, click \"Download anyway\" to proceed with the download.",
     "step1": {
       "title": "Step 1: Download the Client",
-      "description": "Click the button below to download the World of Warcraft client. The download size is approximately 15GB. Make sure you have enough disk space and a stable internet connection."
+      "description": "Click the button above to download the World of Warcraft client. The download size is approximately 15GB. Make sure you have enough disk space and a stable internet connection."
     },
     "step2": {
       "title": "Step 2: Configure Realmlist",
@@ -63,7 +80,7 @@
     },
     "step3": {
       "title": "Step 3: Launch the Game",
-      "description": "Launch World of Warcraft and log in with your account credentials. If you haven't created an account yet, please register using the form above."
+      "description": "Launch World of Warcraft and log in with your account credentials. If you haven't created an account yet, please register using the form on the home page."
     }
   }
 } 
