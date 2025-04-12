@@ -6,8 +6,8 @@ import {
   Button, 
   Typography, 
   Alert,
-  FormControlLabel,
-  Switch,
+  // FormControlLabel,
+  // Switch,
   // useTheme,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
@@ -83,7 +83,7 @@ export const RegistrationForm: React.FC = () => {
   } = useRegistrationStore();
 
   // Additional states
-  const [isBattleNet, setIsBattleNet] = useState(false);
+  // const [isBattleNet, setIsBattleNet] = useState(false);
   const [usernameExists, setUsernameExists] = useState(false);
   const [emailExists, setEmailExists] = useState(false);
 
@@ -95,7 +95,7 @@ export const RegistrationForm: React.FC = () => {
 
   // Effect to check username existence after typing stops
   useEffect(() => {
-    if (!username || username.length < 2 || isBattleNet) return;
+    if (!username || username.length < 2) return;
     
     const timer = setTimeout(async () => {
       const exists = await checkUsername(username);
@@ -108,7 +108,7 @@ export const RegistrationForm: React.FC = () => {
     }, 500);
     
     return () => clearTimeout(timer);
-  }, [username, isBattleNet, error, t, setError]);
+  }, [username, error, t, setError]);
 
   // Effect to check email existence after typing stops
   useEffect(() => {
@@ -138,13 +138,12 @@ export const RegistrationForm: React.FC = () => {
 
   // Username validation
   const validateUsername = (username: string): boolean => {
-    if (isBattleNet) return true; // No username for Battle.net accounts
     return username.length >= 2 && username.length <= 16 && /^[0-9A-Za-z-_]+$/.test(username);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted with:', { username: isBattleNet ? email : username, email, isBattleNet });
+    console.log('Form submitted with:', { username, email });
     
     // Check if account creation is enabled
     if (!getConfigValue<boolean>('FEATURE_ACCOUNT_CREATION', true)) {
@@ -153,23 +152,20 @@ export const RegistrationForm: React.FC = () => {
     }
     
     // Basic validation
-    if ((isBattleNet && (!email || !password || !confirmPassword)) || 
-        (!isBattleNet && (!username || !email || !password || !confirmPassword))) {
+    if (!username || !email || !password || !confirmPassword) {
       setError(t('registration.errors.missingFields'));
       return;
     }
     
-    // Username validation for non-Battle.net accounts
-    if (!isBattleNet) {
-      if (!validateUsername(username)) {
-        setError(t('registration.errors.usernameFormat'));
-        return;
-      }
+    // Username validation
+    if (!validateUsername(username)) {
+      setError(t('registration.errors.usernameFormat'));
+      return;
+    }
 
-      if (usernameExists) {
-        setError(t('registration.errors.usernameExists'));
-        return;
-      }
+    if (usernameExists) {
+      setError(t('registration.errors.usernameExists'));
+      return;
     }
     
     // Email validation
@@ -203,10 +199,10 @@ export const RegistrationForm: React.FC = () => {
       const useSoap = getConfigValue<boolean>('USE_SOAP_REGISTRATION', true);
       
       let accountData = { 
-        username: isBattleNet ? '' : username, 
+        username, 
         email, 
         password,
-        isBattleNet,
+        isBattleNet: false,
         language: 'en',
         expansion: getConfigValue<number>('EXPANSION', 2)
       };
@@ -250,7 +246,6 @@ export const RegistrationForm: React.FC = () => {
         setEmail('');
         setPassword('');
         setConfirmPassword('');
-        setIsBattleNet(false);
         
         let successMessage = t('registration.success', { serverName });
         
@@ -285,40 +280,25 @@ export const RegistrationForm: React.FC = () => {
       
       <form onSubmit={handleSubmit} noValidate>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {/* Battle.net toggle switch */}
-          <FormControlLabel
-            control={
-              <Switch 
-                checked={isBattleNet}
-                onChange={(e) => setIsBattleNet(e.target.checked)}
-                disabled={isLoading}
-              />
+          <StyledTextField
+            label={t('registration.username')}
+            variant="outlined"
+            fullWidth
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            error={!!error && (!username || !validateUsername(username) || usernameExists)}
+            helperText={
+              error && !username 
+                ? error 
+                : usernameExists 
+                  ? t('registration.errors.usernameExists')
+                  : !validateUsername(username) && username
+                    ? t('registration.errors.usernameFormat')
+                    : ''
             }
-            label={t('registration.battleNetAccount')}
+            disabled={isLoading}
+            required
           />
-          
-          {/* Username field - only shown for non-Battle.net accounts */}
-          {!isBattleNet && (
-            <StyledTextField
-              label={t('registration.username')}
-              variant="outlined"
-              fullWidth
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              error={!!error && (!username || !validateUsername(username) || usernameExists)}
-              helperText={
-                error && !username 
-                  ? error 
-                  : usernameExists 
-                    ? t('registration.errors.usernameExists')
-                    : !validateUsername(username) && username
-                      ? t('registration.errors.usernameFormat')
-                      : ''
-              }
-              disabled={isLoading}
-              required
-            />
-          )}
           
           <StyledTextField
             label={t('registration.email')}

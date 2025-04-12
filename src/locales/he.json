@@ -3,12 +3,23 @@
     "home": "דף הבית",
     "download": "הורד לקוח",
     "english": "אנגלית",
-    "hebrew": "עברית"
+    "hebrew": "עברית",
+    "discord": "דיסקורד",
+    "discordTooltip": "הצטרף לקהילה שלנו",
+    "languageTooltip": "החלף שפה"
   },
   "homePage": {
     "title": "ברוכים הבאים ל-WoW - ישראל",
     "subtitle": "הצטרפו לקהילה שלנו והתחילו את ההרפתקה שלכם היום",
-    "downloadButton": "הורד לקוח"
+    "downloadButton": "הורד לקוח",
+    "communitySection": "הצטרף לקהילה שלנו",
+    "discordTitle": "קהילת דיסקורד",
+    "discordDescription": "הצטרף לקהילת הדיסקורד התוססת שלנו כדי להתחבר לשחקנים אחרים, לקבל תמיכה ולהישאר מעודכן בחדשות השרת האחרונות.",
+    "joinDiscord": "הצטרף לדיסקורד",
+    "forumsTitle": "פורומים ומדריכים",
+    "forumsDescription": "גישה למדריכים מועילים, אסטרטגיות ודיונים. שתף את החוויות שלך ולמד משחקנים וותיקים.",
+    "eventsTitle": "אירועים וטורנירים",
+    "eventsDescription": "השתתף באירועים קבועים במשחק, טורנירי PvP ופעילויות עונתיות מיוחדות עם פרסים מרגשים."
   },
   "downloadPage": {
     "title": "הורד את לקוח World of Warcraft"

@@ -3,12 +3,23 @@
     "home": "Home",
     "download": "Download Client",
     "english": "English",
-    "hebrew": "Hebrew"
+    "hebrew": "Hebrew",
+    "discord": "Discord",
+    "discordTooltip": "Join our community",
+    "languageTooltip": "Change language"
   },
   "homePage": {
     "title": "Welcome to WoW - Israel",
     "subtitle": "Join our community and start your adventure today",
-    "downloadButton": "Download Client"
+    "downloadButton": "Download Client",
+    "communitySection": "Join Our Community",
+    "discordTitle": "Discord Community",
+    "discordDescription": "Join our vibrant Discord community to connect with fellow players, get support, and stay updated with the latest server news.",
+    "joinDiscord": "Join Discord",
+    "forumsTitle": "Forums & Guides",
+    "forumsDescription": "Access helpful guides, strategies, and discussions. Share your experiences and learn from veteran players.",
+    "eventsTitle": "Events & Tournaments",
+    "eventsDescription": "Participate in regular in-game events, PvP tournaments, and special seasonal activities with exciting rewards."
   },
   "downloadPage": {
     "title": "Download World of Warcraft Client"
